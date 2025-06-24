@@ -1,6 +1,6 @@
 # OCIO Custom Display Configuration Generator
 
-A tool for creating and appending custom display colorspaces to existing OpenColorIO (OCIO) configurations, using measured display data including custom primaries, white point, luminance, and EOTF characteristics.
+A tool for creating and appending[^1] custom display colorspaces to existing OpenColorIO (OCIO) configurations, using measured display data including custom primaries, white point, luminance, and EOTF characteristics.
 
 The goal is of this system is to have the renderer or compositor handle
 the color transformation to the display's native gamut, rather than
@@ -174,3 +174,5 @@ Available base configurations:
 ## License
 
 BSD 3-Clause License - see [LICENSE](LICENSE) file for details.
+
+[^1]: We append/modify rather than creating a dedicated OCIO config because many (?) systems such as Disguise that can use OCIO can only load one config at a time, and cannot merge OCIO components at runtime.
