@@ -6,5 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "colour-science>=0.4.6",
-    "opencolorio>=2.4.1",
+    "matplotlib>=3.10.3",
+    "opencolorio>=2.4.2",
+    "pyyaml>=6.0",
 ]

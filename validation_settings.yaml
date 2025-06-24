@@ -1,0 +1,37 @@
+# Validation Settings for Display Characterization
+# This file contains validation parameters that can be shared across different display configurations
+
+# PRIMARY COORDINATE VALIDATION
+check_primaries: true      # Validate primary coordinates are within 0-1
+check_white_point: true    # Validate white point coordinates are within 0-1
+
+# LUMINANCE VALIDATION
+check_luminance: true      # Validate luminance values are positive
+check_black_level: true    # Validate black level is reasonable
+check_peak_luminance: true # Validate peak luminance is reasonable
+
+# CONTRAST RATIO VALIDATION
+check_contrast: true       # Validate contrast ratio is reasonable
+min_contrast_ratio: 100    # Minimum acceptable contrast ratio
+max_contrast_ratio: 200000  # Maximum acceptable contrast ratio
+
+# GAMUT VALIDATION
+check_gamut_coverage: true # Validate gamut coverage is reasonable
+min_gamut_coverage: 50.0   # Minimum acceptable gamut coverage (%)
+max_gamut_coverage: 100.0  # Maximum acceptable gamut coverage (%)
+
+# WHITE POINT VALIDATION
+check_white_point_temp: true  # Validate white point temperature is reasonable
+min_white_point_temp: 4000    # Minimum acceptable white point temperature (K)
+max_white_point_temp: 10000   # Maximum acceptable white point temperature (K)
+max_duv_deviation: 0.006       # Maximum acceptable duv deviation from Planckian locus (lenient for standard white points)
+
+# VIEWING CONDITIONS VALIDATION
+check_viewing_conditions: true # Validate viewing condition parameters
+max_ambient_light: 50.0        # Maximum acceptable ambient light (cd/m²)
+max_viewing_angle: 45.0        # Maximum acceptable viewing angle (degrees)
+
+# EOTF VALIDATION
+check_eotf_parameters: true    # Validate EOTF parameters
+min_gamma_value: 1.8           # Minimum acceptable gamma value
+max_gamma_value: 3.0           # Maximum acceptable gamma value 

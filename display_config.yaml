@@ -1,0 +1,74 @@
+# VALIDATION MODE SETTINGS
+# Control how validation failures are handled
+# NOTE: Keep this as the first item in the file and set to strict mode by default
+validation:
+  strict_mode: true        # Enable strict mode (errors instead of warnings)
+  # When strict_mode is false, validation failures show warnings but continue
+  # When strict_mode is true, validation failures stop the process
+
+# Display Characterization Configuration
+# Edit this file with your measured display data, then run the characterization script
+
+display:
+  name: "ROE BP2v2 Brompton 3.5.2"  # Your display model name
+  description: "ROE Black Pearl 2v2"
+
+# MEASURED PRIMARIES (replace with your actual measurements)
+# These should be measured using a colorimeter or spectrophotometer
+# Format: [x, y] coordinates in CIE xy chromaticity space
+primaries:
+  red: [0.680, 0.320]    # Measured red primary
+  green: [0.265, 0.690]  # Measured green primary
+  blue: [0.150, 0.060]   # Measured blue primary
+
+# MEASURED WHITE POINT (replace with your actual measurement)
+# This should be the display's native white point
+white_point: [0.3127, 0.3290]  # measured white point
+
+# MEASURED LUMINANCE CHARACTERISTICS (replace with your actual measurements)
+luminance:
+  black_level: 0.005     # cd/m² - measured black level
+  peak_luminance: 1000.0 # cd/m² - measured peak luminance
+  # Note: contrast_ratio will be calculated automatically
+
+# MEASURED DISPLAY RESPONSE (EOTF)
+eotf:
+  type: "PQ"     # Measured EOTF: "PQ", "HLG", or "GAMMA"
+  # gamma_value: 2.4   # Only include if type is "GAMMA"
+
+# GAMUT MAPPING STRATEGY (how to handle out-of-gamut colors)
+# Options: "clip", "perceptual", "saturation", "relative", "absolute", "soft_clip", "adaptive", "hue_preserving"
+gamut_mapping: "clip"
+
+# VIEWING CONDITIONS (document your measurement environment)
+viewing_conditions:
+  ambient_light: 5.0     # cd/m² - ambient light during measurement
+  viewing_angle: 0.0     # degrees - measurement angle
+  surround: "dark"       # "dark", "dim", "average" - viewing environment
+  measurement_distance: 1.0  # meters - distance from display
+  measurement_date: "2024-01-15"  # When measurements were taken
+  measurement_device: "X-Rite i1 Pro 2"  # Device used for measurement
+
+# OCIO CONFIGURATION
+ocio:
+  base_config:
+    type: "studio"              # studio, aces, or custom
+    config_version: "v2.1.0"    # config version (e.g., v2.1.0, v2.0.0)
+    aces_version: "v1.3"        # ACES version (e.g., v1.3, v1.2)
+    ocio_version: "v2.3"        # OCIO version (e.g., v2.3, v2.2)
+  output_config: "custom_display_config.ocio"  # Will be auto-generated if not specified
+
+# ADVANCED OPTIONS (optional)
+advanced:
+  # Custom response curve file (if using non-standard EOTF)
+  # measured_response: "path/to/response_curve.lut"
+  
+  # Additional metadata
+  manufacturer: "ROE"
+  model_year: 2018
+  calibration_date: "2024-01-15"
+  calibration_software: "LightSpace CMS"
+  
+  # Display-specific settings
+  color_temperature: 6500    # Kelvin
+  uniformity_correction: true  # Whether uniformity correction is applied
