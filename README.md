@@ -61,9 +61,9 @@ having an unknown algorithm in the display do the transformation.
 
 ## Configuration Files
 
-### Main Configuration (`display_config.yaml`)
+### Custom Display Configuration (`display_config.yaml`)
 Contains your display measurements and base OCIO configuration selection:
-- Primary coordinates (red, green, blue)
+- Native primary coordinates (red, green, blue)
 - White point
 - Luminance characteristics (black level, peak luminance)
 - Measured EOTF settings
@@ -71,13 +71,6 @@ Contains your display measurements and base OCIO configuration selection:
 - Gamut mapping strategy
 - Base OCIO configuration selection (type, versions)
 - Validation mode settings
-
-### Validation Settings (`validation_settings.yaml`)
-Contains validation parameters automatically loaded by the scripts:
-- Coordinate validation thresholds
-- Luminance and contrast ratio limits
-- Gamut coverage requirements
-- Viewing condition limits
 
 ### Example Configuration
 
@@ -166,44 +159,6 @@ Available base configurations:
 2. **Select display colorspace in your application**:
    - Use the generated display colorspace for your measured display
 
-## Development with UV
-
-### Project Structure
-UV uses `pyproject.toml` for dependency management and project configuration. The `uv.lock` file ensures reproducible builds.
-
-### Common UV Commands
-
-```bash
-# Install dependencies
-uv sync
-
-# Add a new dependency
-uv add package_name
-
-# Add a development dependency
-uv add --dev package_name
-
-# Run a script
-uv run python script.py
-
-# Run with specific Python version
-uv run --python 3.11 python script.py
-
-# Activate virtual environment
-uv shell
-
-# Update dependencies
-uv sync --upgrade
-```
-
-### Benefits of Using UV
-
-- **Faster dependency resolution** - UV is significantly faster than pip
-- **Reproducible builds** - Lock file ensures consistent environments
-- **Better dependency management** - Automatic virtual environment handling
-- **Cross-platform compatibility** - Works consistently across Windows, macOS, and Linux
-- **Modern Python tooling** - Built with modern Python packaging standards
-
 ## Documentation
 
 - [Display Characterization Guide](DISPLAY_CHARACTERIZATION.md) - Detailed setup and usage
@@ -218,4 +173,4 @@ uv sync --upgrade
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+BSD 3-Clause License - see [LICENSE](LICENSE) file for details.
