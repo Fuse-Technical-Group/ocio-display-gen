@@ -10,44 +10,57 @@ validation:
 # Edit this file with your measured display data, then run the characterization script
 
 display:
-  name: "ROE BP2v2 Brompton 3.5.2"  # Your display model name
-  description: "ROE Black Pearl 2v2"
+  description: "FTG Stage 1"
 
-# MEASURED PRIMARIES (replace with your actual measurements)
-# These should be measured using a colorimeter or spectrophotometer
-# Format: [x, y] coordinates in CIE xy chromaticity space
-primaries:
-  red: [0.680, 0.320]    # Measured red primary
-  green: [0.265, 0.690]  # Measured green primary
-  blue: [0.150, 0.060]   # Measured blue primary
+  led_panel:
+    manufacturer: "ROE"              # LED panel manufacturer
+    model: "Black Pearl 2v2"         # LED panel model
+    version: "2018"                  # Year, batch, or explicit version number
+    last_calibrated: "2024-01-15"    # Last calibration date (ISO format: YYYY-MM-DD)
+    
+    # MEASURED COLORIMETRY (replace with your actual measurements)
+    # These should be measured using a colorimeter or spectrophotometer
+    # Format: [x, y] coordinates in CIE xy chromaticity space
+    colorimetry:
+      primaries:
+        red: [0.680, 0.320]    # Measured red primary
+        green: [0.265, 0.690]  # Measured green primary
+        blue: [0.150, 0.060]   # Measured blue primary
+      white_point: [0.3127, 0.3290]  # Measured white point
 
-# MEASURED WHITE POINT (replace with your actual measurement)
-# This should be the display's native white point
-white_point: [0.3127, 0.3290]  # measured white point
+    # MEASURED LUMINANCE CHARACTERISTICS (replace with your actual measurements)
+    luminance:
+      black_level: 0.005     # cd/m² - measured black level
+      peak_luminance: 1000.0 # cd/m² - measured peak luminance
+      # Note: contrast_ratio will be calculated automatically
+  
+  led_processor:
+    manufacturer: "Brompton"         # LED processor manufacturer
+    model: "SX40"                    # LED processor model
+    version: "3.5.2"                 # Firmware or software version
+    configuration:
+      # DISPLAY EOTF SPECIFICATION (Electro-Optical Transfer Function)
+      # This is what the display system does: electrical signal → light output
+      # We will generate the matching inverse OETF for our color pipeline
+      eotf:
+        type: "GAMMA"     # Display EOTF type: "PQ", "HLG", or "GAMMA" 
+        gamma_value: 2.4   # Only include if type is "GAMMA"
+      color_temperature: 6500    # Kelvin
+      uniformity_correction: true  # Whether uniformity correction is applied
 
-# MEASURED LUMINANCE CHARACTERISTICS (replace with your actual measurements)
-luminance:
-  black_level: 0.005     # cd/m² - measured black level
-  peak_luminance: 1000.0 # cd/m² - measured peak luminance
-  # Note: contrast_ratio will be calculated automatically
 
-# MEASURED DISPLAY RESPONSE (EOTF)
-eotf:
-  type: "PQ"     # Measured EOTF: "PQ", "HLG", or "GAMMA"
-  # gamma_value: 2.4   # Only include if type is "GAMMA"
 
-# GAMUT MAPPING STRATEGY (how to handle out-of-gamut colors)
-# Options: "clip", "perceptual", "saturation", "relative", "absolute", "soft_clip", "adaptive", "hue_preserving"
-gamut_mapping: "clip"
+# MEASUREMENT METROLOGY (measurement methodology and equipment)
+metrology:
+  measurement_date: "2024-01-15"         # When measurements were taken
+  measurement_device: "X-Rite i1 Pro 2"  # Device used for measurement
+  measurement_distance: 1.0              # meters - distance from display
 
-# VIEWING CONDITIONS (document your measurement environment)
+# VIEWING CONDITIONS (measurement environment conditions)
 viewing_conditions:
   ambient_light: 5.0     # cd/m² - ambient light during measurement
   viewing_angle: 0.0     # degrees - measurement angle
   surround: "dark"       # "dark", "dim", "average" - viewing environment
-  measurement_distance: 1.0  # meters - distance from display
-  measurement_date: "2024-01-15"  # When measurements were taken
-  measurement_device: "X-Rite i1 Pro 2"  # Device used for measurement
 
 # OCIO CONFIGURATION
 ocio:
@@ -57,18 +70,18 @@ ocio:
     aces_version: "v1.3"        # ACES version (e.g., v1.3, v1.2)
     ocio_version: "v2.3"        # OCIO version (e.g., v2.3, v2.2)
   output_config: "custom_display_config.ocio"  # Will be auto-generated if not specified
+  
+  # MAPPING STRATEGIES (how to handle color and luminance constraints)
+  mapping:
+    # Gamut mapping strategy (how to handle out-of-gamut colors)
+    # Options: "naive_clip" only (others would require custom 3D LUTs)
+    # Note: OCIO does not have builtin gamut mapping transforms
+    # "naive_clip" uses software-based luminance-preserving clipping
+    gamut: "naive_clip"
+    
+    # Tone mapping strategy (how to handle HDR/bright content)
+    # Options: "naive_clip", "reinhard", "aces", "exposure"
+    # Note: Advanced tone mapping would require custom implementations
+    # "naive_clip" uses simple proportional scaling to preserve chromaticity
+    tone: "naive_clip"
 
-# ADVANCED OPTIONS (optional)
-advanced:
-  # Custom response curve file (if using non-standard EOTF)
-  # measured_response: "path/to/response_curve.lut"
-  
-  # Additional metadata
-  manufacturer: "ROE"
-  model_year: 2018
-  calibration_date: "2024-01-15"
-  calibration_software: "LightSpace CMS"
-  
-  # Display-specific settings
-  color_temperature: 6500    # Kelvin
-  uniformity_correction: true  # Whether uniformity correction is applied

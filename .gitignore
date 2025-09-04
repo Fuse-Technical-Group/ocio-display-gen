@@ -9,5 +9,13 @@ wheels/
 # Virtual environments
 .venv
 
+# OCIO configs
 *.ocio
+
+# macOS nonsense
 .DS_Store
+
+# LLM nonsense
+.mcp.json
+.serena
+.claude

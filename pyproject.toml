@@ -1,7 +1,13 @@
 [project]
 name = "ociodisplaygen"
 version = "0.1.0"
-description = "Add your description here"
+description = "OCIO configuration generator for LED displays using measured native primaries and luminance"
+authors = [
+    { name = "Fuse Technical Group", email = "oss@fuse-tg.com" }
+]
+maintainers = [
+    { name = "Fuse Technical Group", email = "oss@fuse-tg.com" }
+]
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -10,3 +16,21 @@ dependencies = [
     "opencolorio>=2.4.2",
     "pyyaml>=6.0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.8.0",
+    "pylint>=3.0.0",
+    "ruff>=0.1.0",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]  # Enable pycodestyle errors, pyflakes, warnings, and isort
+ignore = ["E203"]  # Ignore whitespace before ':'
+
+[tool.ruff.format]
+quote-style = "double"

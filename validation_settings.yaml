@@ -35,3 +35,7 @@ max_viewing_angle: 45.0        # Maximum acceptable viewing angle (degrees)
 check_eotf_parameters: true    # Validate EOTF parameters
 min_gamma_value: 1.8           # Minimum acceptable gamma value
 max_gamma_value: 3.0           # Maximum acceptable gamma value 
+
+# SDR EOTF WARNING
+warn_on_sdr_eotf: true         # Warn when using SDR EOTF with high brightness
+sdr_warning_threshold: 400.0   # Peak luminance threshold (cd/m²) for SDR warning
