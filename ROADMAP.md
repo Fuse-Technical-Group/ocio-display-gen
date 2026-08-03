@@ -120,10 +120,21 @@ Compare a measured-patch data file against predictions and produce a
 ΔE report with pass/fail thresholds. §spec:verification. Depends on
 §road:probe-patches.
 
+### Measurement guide §road:measurement-guide
+
+Write a measurement procedure guide (MEASUREMENT.md): processor
+state lockdown and warm-up, generation patch set (primaries, white,
+black, per-channel ramps, additivity check), validation patch set
+through the deployed chain, and escalation criteria (1D shaper LUTs,
+corrective 3D LUT) keyed to §spec:characterization-model and
+§spec:verification. Depends on §road:delta-e-report.
+
 **Verify:** Feed the harness a measurement file equal to its own
 predictions and confirm ΔE ≈ 0 and a passing report against the
 ΔE2000 ≤ 2 avg / ≤ 5 max and unity-exponent thresholds; perturb one
-patch and confirm the report flags it.
+patch and confirm the report flags it. Confirm the measurement guide
+walks a reader from patch generation to a passing report using only
+shipped tooling.
 
 ## Documentation truth §road:documentation-truth
 
