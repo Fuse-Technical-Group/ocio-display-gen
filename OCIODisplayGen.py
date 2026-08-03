@@ -777,7 +777,11 @@ def validate_config_data(config: Dict[str, Any]) -> bool:
             else:
                 print(message)
 
-    # Check for SDR EOTF usage with high brightness displays
+    # Advisory: SDR EOTF usage with high brightness displays.
+    # Never fatal, even in strict mode: an SDR-gamma-only front end driving
+    # a bright wall is the reference use case (§req:problem-statement), and
+    # §spec:signal-contract prefers gamma 2.4 on SDR-only links. Strict mode
+    # escalates measurement-plausibility failures, not encoding preferences.
     if validation_config.get("warn_on_sdr_eotf", True):
         peak_luminance = config["display"]["led_panel"]["luminance"]["peak_luminance"]
         eotf_type = config["display"]["led_processor"]["configuration"]["eotf"]["type"]
@@ -785,15 +789,11 @@ def validate_config_data(config: Dict[str, Any]) -> bool:
 
         if peak_luminance > sdr_threshold:
             if eotf_type == "GAMMA":
-                message = (
-                    f"⚠️  Warning: Using GAMMA EOTF with high brightness "
-                    f"({peak_luminance} cd/m²) - consider PQ for HDR content"
+                print(
+                    f"⚠️  Note: GAMMA EOTF with high brightness "
+                    f"({peak_luminance} cd/m²) - PQ carries this range with "
+                    f"less quantization where the processor supports it"
                 )
-                if strict_mode:
-                    print(message)
-                    return False
-                else:
-                    print(message)
             elif eotf_type == "HLG":
                 message = (
                     f"⚠️  Warning: HLG EOTF limited to ~1000 cd/m² but "
