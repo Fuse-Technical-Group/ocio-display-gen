@@ -41,7 +41,15 @@ code values match colour-science reference computation (matrix, CAT
 policy, inverse EOTF) within float tolerance; confirm the old
 ACEScg-matrix path is gone.
 
-## ACES 2.0 rendering §road:aces2-rendering
+## Rendering views §road:rendering-views
+
+### VP Radiometric view §road:vp-radiometric-view
+
+Add the default VP Radiometric view — configurable nits anchor,
+ACES 2.0 gamut compressor at the boundary, selectable clamp/shoulder
+overflow policy — wired from `display_config.yaml` through
+`OCIODisplayGen.py`. §spec:view-transform. Depends on
+§road:colorimetric-view-surface.
 
 ### ACES 2.0 base config selection §road:aces2-base-config
 
@@ -50,16 +58,20 @@ OCIO 2.5 studio config URI scheme. §spec:version-targeting.
 
 ### Parameterized output transform view §road:aces2-view-transform
 
-Add a view transform using the ACES 2.0 output transform parameterized
-by measured peak luminance and native primaries, registered as the
-wall's default view. §spec:view-transform. Depends on
+Add a view using the ACES 2.0 output transform parameterized by
+measured peak luminance and native primaries, for finished-content
+contexts. §spec:view-transform. Depends on
 §road:colorimetric-view-surface and §road:aces2-base-config.
 
-**Verify:** Generate the config, apply the default view to a
-scene-linear exposure ramp and a hue sweep exceeding the wall gamut.
-Confirm highlights roll off rather than clip, out-of-gamut hues
-compress without hue skew, and diffuse white (1.0) lands at the
-ACES-2.0-predicted output level for the measured peak nits.
+**Verify:** Generate the config and exercise both views. VP
+Radiometric: a neutral scene-linear ramp round-trips through
+view + simulated display EOTF at exponent 1.0; in-gamut sub-peak
+values pass through colorimetrically (matrix-only, within float
+tolerance); a hue sweep beyond the wall gamut compresses smoothly with
+no hue skew; above-peak values follow the selected clamp or shoulder
+policy. ACES 2.0 view: an exposure ramp rolls off rather than clips,
+and diffuse white (1.0) lands at the ACES-2.0-predicted level for the
+measured peak nits.
 
 ## Version tiers §road:version-tiers
 
@@ -100,7 +112,7 @@ and that near-black output is finite-sloped.
 
 Generate probe patch imagery with predicted on-wall XYZ values for a
 given generated config. §spec:verification. Depends on
-§road:aces2-view-transform.
+§road:vp-radiometric-view.
 
 ### ΔE report §road:delta-e-report
 
@@ -109,8 +121,9 @@ Compare a measured-patch data file against predictions and produce a
 §road:probe-patches.
 
 **Verify:** Feed the harness a measurement file equal to its own
-predictions and confirm ΔE ≈ 0 and a passing report; perturb one patch
-and confirm the report flags it.
+predictions and confirm ΔE ≈ 0 and a passing report against the
+ΔE2000 ≤ 2 avg / ≤ 5 max and unity-exponent thresholds; perturb one
+patch and confirm the report flags it.
 
 ## Documentation truth §road:documentation-truth
 

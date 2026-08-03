@@ -78,26 +78,49 @@ ACES2065-1 — a silent wrong-matrix bug this structure eliminates.)
 
 *Status: not started*
 
-The primary view uses the ACES 2.0 output transform, parameterized by
-the wall's measured peak luminance and native primaries as the limiting
-gamut. Scene-linear content therefore gets ACES's hue-preserving tone
-scale and gamut compression targeted at the actual wall, not at a
-stand-in standard display.
+Rendering intent is a per-view choice made by the operator in the media
+server, not a generation-time decision: the wall is registered with
+multiple views and switching intents never requires regenerating the
+config (§req:success-criteria). Three views exist:
 
-**Why ACES 2.0:** it is the only widely deployed rendering transform
-parameterized by arbitrary primaries and peak nits — purpose-built for
-nonstandard displays. Hand-rolled gamut/tone mapping (the previous
-plan) duplicates that work at lower quality, and OCIO has no other
-builtin gamut mapping.
+**VP Radiometric (default).** Colorimetric within the wall's volume,
+compression only at its edges (§req:quality-attributes). Scene-linear
+maps to absolute light through a configurable nits anchor (cd/m² per
+scene-linear unit, recorded per show — §req:constraints). Out-of-gamut
+chromaticities are compressed at the boundary by the ACES 2.0 gamut
+compressor parameterized with the wall's measured primaries and peak —
+untouched core, hue-preserving edge. Above-peak luminance follows a
+selectable recorded policy: hard clamp, or a narrow shoulder confined
+to the top of the range. End-to-end system gamma is 1.0: no tone
+scale, no chroma reshaping, no surround compensation, and the encoding
+leg is transparent by construction (§spec:signal-contract,
+§spec:config-structure).
 
-**Why not colorimetric-only:** a matrix + inverse-EOTF pipeline hard
-clips out-of-gamut and out-of-range values. On a wall whose gamut and
-brightness differ this much from grading displays, clipping is visible
-in highlights and saturated gradients.
+**Why radiometric is the default:** in virtual production the wall is
+a light source being photographed. The camera must see the radiometry
+the scene data specifies; photographic rendering belongs in the show's
+grade, not in the wall (§req:user-stories).
 
-Where the target runtime predates ACES 2.0 support, decimated fallbacks
-apply (§spec:version-targeting). A colorimetric "no rendering" view
-remains available for measurement and verification work.
+**ACES 2.0.** The full ACES 2.0 output transform, parameterized by
+measured peak luminance and native primaries as the limiting gamut,
+for contexts where the wall shows finished pictures (IMAG, brand
+content). **Why it is not the VP default:** its tone scale applies
+contrast through the whole range (~1.55 log-log slope at mid-gray;
+0.18 → 10 nits at 100 nit peak) and its chroma compression reshapes
+the entire gamut interior. It is photographic by design and
+radiometric nowhere — correct for pictures, wrong for light sources.
+
+**Colorimetric (no rendering).** Bare display colorspace with hard
+clip, for measurement and verification work.
+
+**Why ACES 2.0 components:** the parameterized output transform and
+standalone gamut compressor are the only widely deployed,
+runtime-supported transforms parameterized by arbitrary primaries and
+peak nits. Hand-rolled gamut mapping duplicates that work at lower
+quality; OCIO has no other builtin gamut mapping.
+
+Where the target runtime predates these transforms, decimated
+fallbacks apply (§spec:version-targeting).
 
 ## OCIO version targeting §spec:version-targeting
 
@@ -113,9 +136,9 @@ Target tiers, selected in `display_config.yaml`:
 
 | Tier | Runtime | Basis | Rendering |
 |------|---------|-------|-----------|
-| 2.5 | Disguise r32.2+, current DCCs | ACES 2.0 studio config | Parameterized ACES 2.0 output transform |
-| 2.4 | Disguise r29.1–r32.1 | ACES 1.3 studio config | ACES 2.0 fixed functions (verify availability/naming per 2.4.x) |
-| ≤2.3 | Legacy runtimes | ACES 1.3 studio config | Nearest ACES 1.3 HDR output (peak-nit variant) + display colorspace; residual gamut delta clips or bakes to a 3D LUT |
+| 2.5 | Disguise r32.2+, current DCCs | ACES 2.0 studio config | All three views (§spec:view-transform) |
+| 2.4 | Disguise r29.1–r32.1 | ACES 1.3 studio config | VP Radiometric + ACES via 2.0 fixed functions (verify availability/naming per 2.4.x) |
+| ≤2.3 | Legacy runtimes | ACES 1.3 studio config | ACES view falls back to nearest ACES 1.3 HDR output (peak-nit variant); VP Radiometric degrades to colorimetric hard clip — no parameterized gamut compressor exists |
 
 **Why not target the lowest common denominator:** the ≤2.3 tier cannot
 parameterize primaries, so it is inherently approximate. Building the
@@ -162,9 +185,13 @@ visible on camera and must be a recorded decision, not a side effect.
 Characterization is a checkable claim, not a hope. The system shall
 provide a closed-loop verification path: generate probe patches, play
 them through the real chain (media player → processor → wall), measure,
-and report ΔE against predicted values. Round-trip unit tests validate
-each generated transform against reference implementations
-(colour-science) at build time.
+and report against predicted values. A wall passes when in-gamut,
+sub-peak patches measure within **ΔE2000 ≤ 2 average, ≤ 5 maximum**,
+and a neutral scene-linear ramp measures an end-to-end exponent of 1.0
+within measurement tolerance (§req:success-criteria) — the latter
+guards the unity-system-gamma property against regression. Round-trip
+unit tests validate each generated transform against reference
+implementations (colour-science) at build time.
 
 **Why:** the model (xy primaries + ideal EOTF + additivity) is known to
 be violated by LED walls in the tail (PWM chromaticity shift at low
