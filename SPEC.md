@@ -161,6 +161,21 @@ perceptually uniform code values and large corrections happen in
 floating point, avoiding the banding that the same correction applied
 in the processor would produce.
 
+**Link encoding.** Where the processor offers a true PQ decode, it is
+preferred at 10-bit (near-threshold quantization across the full
+luminance range; absolute code-to-nits mapping strengthens this
+contract) — but only after verification shows it decodes to light with
+clipping only, since vendor HDR modes are where unauditable processing
+lives (§req:constraints). Where the front end is SDR-only — the
+reference fleet's pre-Dynacal panels cannot accept PQ/HLG at all
+(§req:problem-statement) — the contract is a pure gamma decode: prefer
+gamma 2.4 over 2.2 (better code allocation in the 1–20 cd/m² band when
+stretched over 1000 cd/m²) and a 12-bit link over 10-bit, since 10-bit
+gamma across that range quantizes visibly on gradients. Chroma
+subsampling (4:2:2) is tolerated but 4:4:4 is preferred. **Why no
+custom exponent:** a power law's code allocation barely improves with
+exponent, and a nonstandard decode state defeats on-site auditability.
+
 ## White point policy §spec:white-point
 
 *Status: not started*
