@@ -15,42 +15,40 @@ import PyOpenColorIO as OCIO
 import yaml  # type: ignore[import]
 
 
-def get_reference_space_primaries(
-    ocio_config: Optional["OCIO.Config"] = None,
-) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+def derive_reference_spaces(ocio_config: "OCIO.Config") -> Tuple[str, str]:
     """
-    Determine the reference space primaries from an OCIO config.
+    Derive the scene and display reference spaces from a config's
+    interchange roles.
 
     Args:
-        ocio_config: OCIO config to query (currently unused, reserved for future use)
+        ocio_config: Loaded OCIO config to query
 
     Returns:
-        Tuple of (primaries_array, whitepoint_array) for the reference space
+        Tuple of canonical colorspace names (scene_reference, display_reference)
 
-    Note: For now, assumes ACEScg (AP1) as reference space for studio/ACES configs.
-    Future versions should query the config directly.
+    Raises:
+        ValueError: If either interchange role is missing from the config.
+            A silently wrong config is worse than no config.
     """
-    # For now, assume ACEScg (AP1 primaries) as reference space
-    # This is the case for most studio and ACES configs
-    # TODO: In future, query the actual config to determine reference space
-    _ = ocio_config  # Reserved for future use
-
-    # ACEScg AP1 primaries (CIE xy coordinates)
-    ap1_primaries = np.array(
-        [[0.713, 0.293], [0.165, 0.830], [0.128, 0.044]]  # Red  # Green  # Blue
-    )
-
-    # ACEScg white point (D60)
-    ap1_whitepoint = np.array([0.32168, 0.33767])
-
-    return ap1_primaries, ap1_whitepoint
+    names = []
+    for role in (OCIO.ROLE_INTERCHANGE_SCENE, OCIO.ROLE_INTERCHANGE_DISPLAY):
+        try:
+            name = ocio_config.getCanonicalName(role)
+        except Exception as exc:
+            raise ValueError(
+                f"Base config does not define interchange role '{role}'"
+            ) from exc
+        if not name:
+            raise ValueError(f"Base config does not define interchange role '{role}'")
+        names.append(name)
+    return names[0], names[1]
 
 
 def create_reference_to_display_matrix(
     display_primaries: npt.NDArray[np.float64],
     display_whitepoint: npt.NDArray[np.float64],
-    reference_primaries: Optional[npt.NDArray[np.float64]] = None,
-    reference_whitepoint: Optional[npt.NDArray[np.float64]] = None,
+    reference_primaries: npt.NDArray[np.float64],
+    reference_whitepoint: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
     """
     Create RGB-to-RGB transformation matrix from reference space to display space.
@@ -58,16 +56,12 @@ def create_reference_to_display_matrix(
     Args:
         display_primaries: Display RGB primaries as [[Rx,Ry], [Gx,Gy], [Bx,By]]
         display_whitepoint: Display white point as [x, y]
-        reference_primaries: Reference RGB primaries (defaults to ACEScg AP1)
-        reference_whitepoint: Reference white point (defaults to D60)
+        reference_primaries: Reference RGB primaries as [[Rx,Ry], [Gx,Gy], [Bx,By]]
+        reference_whitepoint: Reference white point as [x, y]
 
     Returns:
         4x4 transformation matrix for OCIO MatrixTransform
     """
-    # Default to ACEScg (AP1) if no reference space specified
-    if reference_primaries is None or reference_whitepoint is None:
-        reference_primaries, reference_whitepoint = get_reference_space_primaries(None)
-
     # Create colour-science RGB colorspaces
     reference_space = colour.RGB_Colourspace(
         "Reference", reference_primaries, reference_whitepoint, "Reference Space"
@@ -191,6 +185,7 @@ class DisplayCharacterization:
 
 def create_display_colorspace_from_characterization(
     characterization: DisplayCharacterization,
+    scene_reference: str,
     gamut_mapping: str = "naive_clip",
     tone_mapping: str = "naive_clip",
 ) -> OCIO.ColorSpace:
@@ -199,7 +194,29 @@ def create_display_colorspace_from_characterization(
     corrected pipeline.
 
     Pipeline: Reference RGB → [Matrix] → [Gamut Map] → [Tone Map] → [OETF] → Display RGB
+
+    Args:
+        characterization: Measured display data
+        scene_reference: Canonical name of the base config's scene reference
+            space (from derive_reference_spaces); must exist in
+            colour.RGB_COLOURSPACES
+        gamut_mapping: Gamut mapping strategy
+        tone_mapping: Tone mapping strategy
+
+    Raises:
+        ValueError: If scene_reference is not a known colour-science colorspace.
     """
+
+    if scene_reference not in colour.RGB_COLOURSPACES:
+        raise ValueError(
+            f"Scene reference space '{scene_reference}' is not defined in "
+            f"colour.RGB_COLOURSPACES; cannot derive reference primaries"
+        )
+    reference_space = colour.RGB_COLOURSPACES[scene_reference]
+    reference_primaries = np.reshape(
+        np.asarray(reference_space.primaries, dtype=np.float64), (3, 2)
+    )
+    reference_whitepoint = np.asarray(reference_space.whitepoint, dtype=np.float64)
 
     eotf_type = (
         characterization.eotf_type
@@ -239,9 +256,9 @@ def create_display_colorspace_from_characterization(
     group = OCIO.GroupTransform()
 
     # Stage 1: Matrix Transform (Reference RGB → Display RGB primaries)
-    print("  Creating Reference→Display matrix transform...")
+    print(f"  Creating {scene_reference}→Display matrix transform...")
     matrix_4x4 = create_reference_to_display_matrix(
-        display_primaries, display_whitepoint
+        display_primaries, display_whitepoint, reference_primaries, reference_whitepoint
     )
     matrix_transform = OCIO.MatrixTransform()
     matrix_transform.setMatrix([float(x) for x in matrix_4x4.flatten()])
@@ -345,6 +362,9 @@ def append_display_colorspace_to_config(
     # Load the existing OCIO config
     config = OCIO.Config.CreateFromFile(input_config_path)
 
+    # Derive the scene reference space from the config's interchange roles
+    scene_reference, _ = derive_reference_spaces(config)
+
     # Default EOTF variants if none specified
     if eotf_variants is None:
         eotf_variants = ["PQ", "HLG", "GAMMA"]
@@ -353,7 +373,7 @@ def append_display_colorspace_to_config(
     for eotf_type in eotf_variants:
         suffix = f" - {eotf_type}"
         cs = create_display_colorspace_from_characterization(
-            characterization, gamut_mapping=eotf_type
+            characterization, scene_reference, gamut_mapping=eotf_type
         )
         config.addColorSpace(cs)
 
@@ -866,10 +886,16 @@ def main():
     try:
         print("\nCreating base OCIO config...")
         ocio_config_obj = create_base_ocio_config(config)
+        scene_reference, display_reference = derive_reference_spaces(ocio_config_obj)
+        print(f"Scene reference space: {scene_reference}")
+        print(f"Display reference space: {display_reference}")
         gamut_mapping = mapping_config.get("gamut", "naive_clip")
         tone_mapping = mapping_config.get("tone", "naive_clip")
         cs = create_display_colorspace_from_characterization(
-            characterization, gamut_mapping=gamut_mapping, tone_mapping=tone_mapping
+            characterization,
+            scene_reference,
+            gamut_mapping=gamut_mapping,
+            tone_mapping=tone_mapping,
         )
         ocio_config_obj.addColorSpace(cs)
         display_name = cs.getName()
