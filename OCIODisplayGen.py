@@ -48,6 +48,10 @@ def derive_reference_spaces(ocio_config: "OCIO.Config") -> Tuple[str, str]:
 # XYZ→native matrix assumes input XYZ is adapted to this white.
 D65_WHITE_XY: Tuple[float, float] = (0.3127, 0.3290)
 
+# The colorimetric view: the bare display colorspace with hard clip,
+# for measurement and verification work (§spec:view-transform).
+COLORIMETRIC_VIEW = "Colorimetric"
+
 # OCIO's display-reference luminance anchor: linear 1.0 = 100 cd/m².
 REFERENCE_LUMINANCE = 100.0
 
@@ -299,6 +303,42 @@ def create_display_colorspace_from_characterization(
 
     cs.setTransform(group, OCIO.COLORSPACE_DIR_FROM_REFERENCE)
     return cs
+
+
+def register_display(config: "OCIO.Config", colorspace: OCIO.ColorSpace) -> str:
+    """
+    Register the wall as a named OCIO display with a colorimetric view.
+
+    Adds the colorspace to the config and registers a display named
+    after it (studio config convention: display name == display
+    colorspace name) with a "Colorimetric" view pointing at the bare
+    colorspace. The display is appended to the config's active-display
+    list without clobbering the base config's existing entries. An
+    empty active list means "all active" in OCIO, so it is left empty.
+
+    Args:
+        config: Base OCIO config to extend
+        colorspace: Display-referred wall colorspace
+
+    Returns:
+        The registered display name
+    """
+    config.addColorSpace(colorspace)
+    display_name = colorspace.getName()
+    config.addDisplayView(display_name, COLORIMETRIC_VIEW, display_name)
+
+    active_displays = config.getActiveDisplays()
+    if active_displays:
+        config.setActiveDisplays(f"{active_displays}, {display_name}")
+
+    # Display-defined views are not filtered by the studio config's
+    # active_views list, but guard against filtering regardless: a
+    # registered display without its view is silently useless.
+    if COLORIMETRIC_VIEW not in config.getViews(display_name):
+        active_views = config.getActiveViews()
+        config.setActiveViews(f"{active_views}, {COLORIMETRIC_VIEW}")
+
+    return display_name
 
 
 def create_example_characterization() -> DisplayCharacterization:
@@ -750,22 +790,28 @@ def main():
                 f"but the emitted XYZ→native matrix assumes CIE-XYZ-D65"
             )
         cs = create_display_colorspace_from_characterization(characterization)
-        ocio_config_obj.addColorSpace(cs)
-        display_name = cs.getName()
-        ocio_config_obj.addDisplayView(display_name, "Output", cs.getName())
+        display_name = register_display(ocio_config_obj, cs)
+        try:
+            ocio_config_obj.validate()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Generated config failed OCIO validation: {exc}"
+            ) from exc
         with open(output_config_path, "w", encoding="utf-8") as f:
             f.write(ocio_config_obj.serialize())
         print("\n✅ Successfully created OCIO config!")
         print(f"   Output file: {output_config_path}")
-        print("   Colorspaces created: 1")
-        print("\nCreated colorspace:")
-        print(f"   - {display_name}")
+        print(f"\nRegistered display: {display_name}")
+        print(f"   View: {COLORIMETRIC_VIEW}")
         print("\n📋 Usage Instructions:")
         print(
             f"1. Set OCIO environment variable: export OCIO="
             f"{os.path.abspath(output_config_path)}"
         )
-        print("2. In your application, select the display colorspace above")
+        print(
+            f"2. In your application, select display '{display_name}' "
+            f"with view '{COLORIMETRIC_VIEW}'"
+        )
     except Exception as e:
         print(f"❌ Error creating OCIO config: {e}")
         import traceback
