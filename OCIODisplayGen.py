@@ -6,7 +6,7 @@
 
 import os
 import sys
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, Optional, Tuple, cast
 
 import colour
 import numpy as np
@@ -15,156 +15,41 @@ import PyOpenColorIO as OCIO
 import yaml  # type: ignore[import]
 
 
-def get_reference_space_primaries(
-    ocio_config: Optional["OCIO.Config"] = None,
-) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+def derive_reference_spaces(ocio_config: "OCIO.Config") -> Tuple[str, str]:
     """
-    Determine the reference space primaries from an OCIO config.
+    Derive the scene and display reference spaces from a config's
+    interchange roles.
 
     Args:
-        ocio_config: OCIO config to query (currently unused, reserved for future use)
+        ocio_config: Loaded OCIO config to query
 
     Returns:
-        Tuple of (primaries_array, whitepoint_array) for the reference space
+        Tuple of canonical colorspace names (scene_reference, display_reference)
 
-    Note: For now, assumes ACEScg (AP1) as reference space for studio/ACES configs.
-    Future versions should query the config directly.
+    Raises:
+        ValueError: If either interchange role is missing from the config.
+            A silently wrong config is worse than no config.
     """
-    # For now, assume ACEScg (AP1 primaries) as reference space
-    # This is the case for most studio and ACES configs
-    # TODO: In future, query the actual config to determine reference space
-    _ = ocio_config  # Reserved for future use
-
-    # ACEScg AP1 primaries (CIE xy coordinates)
-    ap1_primaries = np.array(
-        [[0.713, 0.293], [0.165, 0.830], [0.128, 0.044]]  # Red  # Green  # Blue
-    )
-
-    # ACEScg white point (D60)
-    ap1_whitepoint = np.array([0.32168, 0.33767])
-
-    return ap1_primaries, ap1_whitepoint
+    names = []
+    for role in (OCIO.ROLE_INTERCHANGE_SCENE, OCIO.ROLE_INTERCHANGE_DISPLAY):
+        name = ocio_config.getCanonicalName(role)
+        if not name:
+            raise ValueError(f"Base config does not define interchange role '{role}'")
+        names.append(name)
+    return names[0], names[1]
 
 
-def create_reference_to_display_matrix(
-    display_primaries: npt.NDArray[np.float64],
-    display_whitepoint: npt.NDArray[np.float64],
-    reference_primaries: Optional[npt.NDArray[np.float64]] = None,
-    reference_whitepoint: Optional[npt.NDArray[np.float64]] = None,
-) -> npt.NDArray[np.float64]:
-    """
-    Create RGB-to-RGB transformation matrix from reference space to display space.
+# The display reference space the emitted matrix assumes, and its white
+# chromaticity: input XYZ must be adapted to this white.
+DISPLAY_REFERENCE = "CIE-XYZ-D65"
+D65_WHITE_XY: Tuple[float, float] = (0.3127, 0.3290)
 
-    Args:
-        display_primaries: Display RGB primaries as [[Rx,Ry], [Gx,Gy], [Bx,By]]
-        display_whitepoint: Display white point as [x, y]
-        reference_primaries: Reference RGB primaries (defaults to ACEScg AP1)
-        reference_whitepoint: Reference white point (defaults to D60)
+# The colorimetric view: the bare display colorspace with hard clip,
+# for measurement and verification work (§spec:view-transform).
+COLORIMETRIC_VIEW = "Colorimetric"
 
-    Returns:
-        4x4 transformation matrix for OCIO MatrixTransform
-    """
-    # Default to ACEScg (AP1) if no reference space specified
-    if reference_primaries is None or reference_whitepoint is None:
-        reference_primaries, reference_whitepoint = get_reference_space_primaries(None)
-
-    # Create colour-science RGB colorspaces
-    reference_space = colour.RGB_Colourspace(
-        "Reference", reference_primaries, reference_whitepoint, "Reference Space"
-    )
-
-    display_space = colour.RGB_Colourspace(
-        "Display", display_primaries, display_whitepoint, "Display Space"
-    )
-
-    # Get the RGB-to-RGB conversion matrix
-    matrix_3x3 = colour.matrix_RGB_to_RGB(reference_space, display_space)
-
-    # Convert to 4x4 matrix for OCIO
-    matrix_4x4 = np.identity(4)
-    matrix_4x4[:3, :3] = matrix_3x3
-
-    return matrix_4x4
-
-
-def naive_gamut_map_preserve_luminance(
-    rgb: npt.NDArray[np.float32],
-) -> npt.NDArray[np.float32]:
-    """
-    Naive gamut mapping that preserves luminance while constraining chromaticity.
-
-    Strategy:
-    1. Calculate relative luminance
-    2. If any RGB values are negative, use a different approach
-    3. Scale negative values to zero while preserving ratios
-    4. Ensure all values are non-negative
-
-    Args:
-        rgb: RGB values (can be negative or >1.0)
-
-    Returns:
-        RGB values with valid chromaticity, attempting to preserve luminance
-    """
-    # Convert to numpy array if needed
-    rgb = np.asarray(rgb, dtype=np.float32)
-
-    # Calculate relative luminance (ITU-R BT.709 weights)
-    original_luminance = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
-
-    # Handle zero or negative luminance
-    if original_luminance <= 0:
-        return np.array([0.0, 0.0, 0.0], dtype=np.float32)
-
-    # Simple clipping approach for naive implementation
-    # In practice, more sophisticated gamut mapping would be used
-    clipped_rgb = np.clip(rgb, 0.0, np.inf)  # Remove negative values
-
-    # If we clipped any values, try to preserve luminance by scaling
-    if not np.allclose(rgb, clipped_rgb):
-        clipped_luminance = (
-            0.2126 * clipped_rgb[0] + 0.7152 * clipped_rgb[1] + 0.0722 * clipped_rgb[2]
-        )
-        if clipped_luminance > 0:
-            # Scale to preserve original luminance
-            scale_factor = original_luminance / clipped_luminance
-            clipped_rgb *= scale_factor
-
-    return clipped_rgb.astype(np.float32)
-
-
-def naive_tone_map_preserve_chromaticity(
-    rgb: npt.NDArray[np.float32], max_luminance: float = 1.0
-) -> npt.NDArray[np.float32]:
-    """
-    Naive tone mapping that preserves chromaticity while constraining luminance.
-
-    Strategy:
-    1. Find maximum component (simple luminance proxy)
-    2. Scale all components proportionally if exceeding max_luminance
-    3. Preserve color ratios (chromaticity)
-
-    Args:
-        rgb: RGB values (assumed valid chromaticity, may be >1.0)
-        max_luminance: Maximum allowed luminance (typically 1.0)
-
-    Returns:
-        RGB values within luminance range, preserving chromaticity
-    """
-    # Convert to numpy array if needed
-    rgb = np.asarray(rgb, dtype=np.float32)
-
-    # Find maximum component as luminance proxy
-    max_component = np.max(rgb)
-
-    # No tone mapping needed if within range
-    if max_component <= max_luminance:
-        return rgb
-
-    # Scale all components proportionally (preserves chromaticity)
-    scale_factor = max_luminance / max_component
-    result = rgb * scale_factor
-
-    return result.astype(np.float32)
+# OCIO's display-reference luminance anchor: linear 1.0 = 100 cd/m².
+REFERENCE_LUMINANCE = 100.0
 
 
 class DisplayCharacterization:
@@ -189,273 +74,180 @@ class DisplayCharacterization:
         ] = {}  # Ambient light, viewing angle, etc.
 
 
-def create_display_colorspace_from_characterization(
+def create_display_xyz_to_native_matrix(
     characterization: DisplayCharacterization,
-    gamut_mapping: str = "naive_clip",
-    tone_mapping: str = "naive_clip",
-) -> OCIO.ColorSpace:
+    chromatic_adaptation_transform: str = "CAT02",
+) -> npt.NDArray[np.float64]:
     """
-    Create OCIO display colorspace from display characterization using
-    corrected pipeline.
+    Build the 4x4 matrix from display-reference CIE XYZ (D65-adapted) to
+    the wall's native RGB.
 
-    Pipeline: Reference RGB → [Matrix] → [Gamut Map] → [Tone Map] → [OETF] → Display RGB
+    Composes a Von Kries chromatic adaptation (display-reference D65 →
+    measured wall white) with the wall's derived XYZ→RGB matrix, so
+    native RGB (1, 1, 1) is the wall's measured white.
+
+    Args:
+        characterization: Measured display data (primaries, white point)
+        chromatic_adaptation_transform: CAT name accepted by colour-science
+
+    Returns:
+        4x4 matrix for an OCIO MatrixTransform (row-major)
     """
-
-    eotf_type = (
-        characterization.eotf_type
-    )  # Display EOTF (we'll generate matching OETF)
-
-    # Prepare display primaries and white point for matrix creation
-    display_primaries = np.array(
+    primaries = np.array(
         [
             characterization.primaries["red"],
             characterization.primaries["green"],
             characterization.primaries["blue"],
-        ]
+        ],
+        dtype=np.float64,
     )
-    display_whitepoint = np.array(characterization.white_point)
+    white_xy = np.asarray(characterization.white_point, dtype=np.float64)
 
-    # Create OCIO colorspace
-    cs = OCIO.ColorSpace()
+    wall_space = colour.RGB_Colourspace(
+        characterization.name, primaries, white_xy, "Wall White"
+    )
+    wall_space.use_derived_transformation_matrices()
+
+    cat_matrix = colour.adaptation.matrix_chromatic_adaptation_VonKries(
+        colour.xy_to_XYZ(np.array(D65_WHITE_XY)),
+        colour.xy_to_XYZ(white_xy),
+        transform=chromatic_adaptation_transform,
+    )
+
+    matrix_4x4 = np.identity(4)
+    matrix_4x4[:3, :3] = wall_space.matrix_XYZ_to_RGB @ cat_matrix
+    return matrix_4x4
+
+
+def create_display_colorspace_from_characterization(
+    characterization: DisplayCharacterization,
+    chromatic_adaptation_transform: str = "CAT02",
+) -> OCIO.ColorSpace:
+    """
+    Create the wall's OCIO display colorspace from measured data.
+
+    The colorspace is display-referred: its from_display_reference
+    transform maps CIE XYZ (D65-adapted, 1.0 = 100 cd/m²) to the wall's
+    encoded native RGB. Pipeline: XYZ→native matrix (with chromatic
+    adaptation), absolute luminance scale, hard clip, inverse processor
+    EOTF. It holds only measured colorimetry — exact within gamut,
+    hard-clipped outside.
+
+    Args:
+        characterization: Measured display data
+        chromatic_adaptation_transform: CAT for D65 → wall white adaptation
+
+    Raises:
+        NotImplementedError: For HLG (an inverse EOTF without OOTF
+            handling would be silently wrong).
+        ValueError: For unknown EOTF types.
+    """
+    eotf_type = characterization.eotf_type
+    if eotf_type == "HLG":
+        raise NotImplementedError(
+            "HLG output is not supported: an HLG inverse EOTF without OOTF "
+            "handling would be silently wrong. Configure the processor for "
+            "PQ or GAMMA."
+        )
+    if eotf_type not in ("PQ", "GAMMA"):
+        raise ValueError(f"Unknown display EOTF type '{eotf_type}'")
+
+    peak = characterization.peak_luminance
+
+    cs = OCIO.ColorSpace(OCIO.REFERENCE_SPACE_DISPLAY)
     display_name = f"{characterization.name} - Display"
     cs.setName(display_name)
     cs.addAlias(f"{display_name.lower().replace(' ', '_')}_display")
     cs.setFamily("Display")
-    cs.setEncoding("hdr-video" if eotf_type in ["PQ", "HLG"] else "sdr-video")
+    cs.setEncoding("hdr-video" if eotf_type == "PQ" else "sdr-video")
     cs.setDescription(
         f"Display colorspace for {characterization.name} "
         f"(Peak: {characterization.peak_luminance} cd/m², "
         f"Black: {characterization.black_level} cd/m², "
-        f"EOTF: {eotf_type}, "
-        f"Gamut: {gamut_mapping}, Tone: {tone_mapping}) "
-        f"Pipeline: Reference→[Matrix]→[GamutMap]→[ToneMap]→"
-        f"[OETF(inverse {eotf_type})]→Display"
+        f"EOTF: {eotf_type}) "
+        f"CIE-XYZ-D65 → native RGB matrix → luminance scale → "
+        f"hard clip → inverse {eotf_type} EOTF"
     )
     cs.setBitDepth(OCIO.BIT_DEPTH_F32)
     cs.addCategory("file-io")
     cs.addCategory("display")
 
-    # Create transform group with corrected pipeline order
     group = OCIO.GroupTransform()
 
-    # Stage 1: Matrix Transform (Reference RGB → Display RGB primaries)
-    print("  Creating Reference→Display matrix transform...")
-    matrix_4x4 = create_reference_to_display_matrix(
-        display_primaries, display_whitepoint
+    # Stage 1: XYZ (D65-adapted) → native RGB, with chromatic adaptation.
+    # After this, native (1,1,1) = wall white at 100 cd/m² (Y = 1.0).
+    matrix_4x4 = create_display_xyz_to_native_matrix(
+        characterization, chromatic_adaptation_transform
     )
     matrix_transform = OCIO.MatrixTransform()
-    matrix_transform.setMatrix([float(x) for x in matrix_4x4.flatten()])
+    matrix_transform.setMatrix(matrix_4x4.flatten().tolist())
     group.appendTransform(matrix_transform)
 
-    # Stage 2: Gamut Mapping (handle out-of-gamut colors in display space)
-    print(f"  Adding gamut mapping: {gamut_mapping}")
-    if gamut_mapping == "naive_clip":
-        # Naive gamut mapping will be handled by software (our helper functions)
-        # Note: OCIO does not have builtin gamut mapping transforms like
-        # "GAMUT-MAP - PERCEPTUAL"
-        # Those would need to be implemented as custom 3D LUTs or other transforms
-        print("    Using software-based naive gamut mapping (no OCIO transform added)")
-
+    if eotf_type == "GAMMA":
+        # Stage 2: absolute luminance scale — RGB 1.0 = measured peak.
+        # Kept as a distinct stage for auditability.
+        scale = REFERENCE_LUMINANCE / peak
+        scale_transform = OCIO.MatrixTransform()
+        scale_matrix = np.diag([scale, scale, scale, 1.0])
+        scale_transform.setMatrix(scale_matrix.flatten().tolist())
+        group.appendTransform(scale_transform)
+        clip_max = 1.0
     else:
-        print(f"    Warning: Gamut mapping '{gamut_mapping}' not implemented")
-        print("    Note: OCIO builtin gamut mapping transforms do not exist")
-        print(
-            "    Advanced gamut mapping would require custom 3D LUTs or "
-            "other transforms"
-        )
+        # PQ is absolute (encodes nits directly): omit the luminance
+        # scale and clip at the measured peak instead, so the encoding
+        # stays exact and out-of-range values clip at the wall's peak.
+        clip_max = peak / REFERENCE_LUMINANCE
 
-    # Stage 3: Tone Mapping (handle >1.0 luminance values)
-    print(f"  Adding tone mapping: {tone_mapping}")
-    if tone_mapping == "naive_clip":
-        # Naive tone mapping will be handled by software (our helper functions)
-        # Advanced tone mapping would require custom transforms or LUTs
-        print("    Using software-based naive tone mapping (no OCIO transform added)")
-    else:
-        print(f"    Warning: Tone mapping '{tone_mapping}' not implemented")
-        print("    Advanced tone mapping would require custom transforms or LUTs")
+    # Stage 3: hard clip. The display colorspace is exact within gamut
+    # and hard-clips outside; gamut handling belongs to view transforms.
+    range_transform = OCIO.RangeTransform()
+    range_transform.setMinInValue(0.0)
+    range_transform.setMaxInValue(clip_max)
+    range_transform.setMinOutValue(0.0)
+    range_transform.setMaxOutValue(clip_max)
+    group.appendTransform(range_transform)
 
-    # Stage 4: OETF (Opto-Electronic Transfer Function: Linear → Encoded)
-    # Generate OETF that matches the inverse of the display's EOTF
-    print(f"  Generating OETF to match display EOTF: {eotf_type}")
+    # Stage 4: inverse processor EOTF (linear → encoded).
     if eotf_type == "PQ":
-        # PQ OETF using verified builtin transform
-        try:
-            pq_transform = OCIO.BuiltinTransform("CURVE - LINEAR_to_ST-2084")
-            pq_transform.setDirection(OCIO.TRANSFORM_DIR_FORWARD)
-            group.appendTransform(pq_transform)
-            print("    ✓ Applied PQ (ST-2084) OETF (inverse of display PQ EOTF)")
-        except Exception as e:
-            print(f"    ✗ PQ OETF failed: {e}")
-
-    elif eotf_type == "HLG":
-        # HLG OETF using verified builtin transform
-        try:
-            hlg_transform = OCIO.BuiltinTransform("CURVE - HLG-OETF")
-            hlg_transform.setDirection(OCIO.TRANSFORM_DIR_FORWARD)
-            group.appendTransform(hlg_transform)
-            print("    ✓ Applied HLG OETF (inverse of display HLG EOTF)")
-        except Exception as e:
-            print(f"    ✗ HLG OETF failed: {e}")
-
-    elif eotf_type == "GAMMA":
-        # Note: OCIO doesn't have generic "CURVE - LINEAR_to_GAMMA{value}" transforms
-        # Would need to use ExponentTransform or custom LUT
-        print("    Warning: Generic gamma OETF not available as builtin transform")
-        print(
-            f"    Implementing OETF (1/gamma) to match display "
-            f"Gamma {characterization.gamma_value} EOTF"
-        )
-
-        # Use ExponentTransform to create OETF (inverse of display EOTF)
-        try:
-            # Create inverse gamma (OETF is 1/gamma when display EOTF is gamma)
-            gamma_transform = getattr(OCIO, "ExponentTransform")()
-            # type: ignore[attr-defined]
-            gamma_values = [1.0 / characterization.gamma_value] * 4  # RGBA channels
-            gamma_transform.setValue(gamma_values)  # type: ignore[attr-defined]
-            group.appendTransform(gamma_transform)
-            print(
-                f"    ✓ Applied OETF (1/{characterization.gamma_value}) to match "
-                f"display Gamma {characterization.gamma_value} EOTF"
-            )
-        except Exception as e:
-            print(f"    ✗ Gamma OETF failed: {e}")
-
+        pq_transform = OCIO.BuiltinTransform("CURVE - LINEAR_to_ST-2084")
+        pq_transform.setDirection(OCIO.TRANSFORM_DIR_FORWARD)
+        group.appendTransform(pq_transform)
     else:
-        print(f"    Warning: Unknown display EOTF type '{eotf_type}'")
+        gamma_transform = OCIO.ExponentTransform()
+        gamma_transform.setValue([1.0 / characterization.gamma_value] * 3 + [1.0])
+        group.appendTransform(gamma_transform)
 
     cs.setTransform(group, OCIO.COLORSPACE_DIR_FROM_REFERENCE)
-
-    print(f"  ✓ Created display colorspace: {display_name}")
-    print(
-        f"    Pipeline: Reference RGB → Matrix → Gamut({gamut_mapping}) → "
-        f"Tone({tone_mapping}) → OETF(inverse {eotf_type}) → Display"
-    )
-
     return cs
 
 
-def append_display_colorspace_to_config(
-    input_config_path: str,
-    characterization: DisplayCharacterization,
-    eotf_variants: Optional[List[str]] = None,
-) -> OCIO.Config:
-    """Append display colorspace(s) to existing config with multiple EOTF variants"""
+def register_display(config: "OCIO.Config", colorspace: OCIO.ColorSpace) -> str:
+    """
+    Register the wall as a named OCIO display with a colorimetric view.
 
-    # Load the existing OCIO config
-    config = OCIO.Config.CreateFromFile(input_config_path)
+    Adds the colorspace to the config and registers a display named
+    after it (studio config convention: display name == display
+    colorspace name) with a "Colorimetric" view pointing at the bare
+    colorspace. The display is appended to the config's active-display
+    list without clobbering the base config's existing entries. An
+    empty active list means "all active" in OCIO, so it is left empty.
 
-    # Default EOTF variants if none specified
-    if eotf_variants is None:
-        eotf_variants = ["PQ", "HLG", "GAMMA"]
+    Args:
+        config: Base OCIO config to extend
+        colorspace: Display-referred wall colorspace
 
-    # Create colorspaces for each EOTF variant
-    for eotf_type in eotf_variants:
-        suffix = f" - {eotf_type}"
-        cs = create_display_colorspace_from_characterization(
-            characterization, gamut_mapping=eotf_type
-        )
-        config.addColorSpace(cs)
+    Returns:
+        The registered display name
+    """
+    config.addColorSpace(colorspace)
+    display_name = colorspace.getName()
+    config.addDisplayView(display_name, COLORIMETRIC_VIEW, display_name)
 
-        # Add display view for each variant
-        display_name = f"{characterization.name}{suffix} - Display"
-        config.addDisplayView(display_name, "Output", cs.getName())
+    active_displays = config.getActiveDisplays()
+    if active_displays:
+        config.setActiveDisplays(f"{active_displays}, {display_name}")
 
-    return config
-
-
-def create_display_colorspace(
-    r_xy: Tuple[float, float],
-    g_xy: Tuple[float, float],
-    b_xy: Tuple[float, float],
-    w_xy: Tuple[float, float],
-    name: str = "DisplayOutput",
-    whitepoint_name: str = "whitepoint name",
-) -> OCIO.ColorSpace:
-    """Create OCIO display colorspace from CIE xy primaries (legacy function)"""
-
-    # Create RGB to XYZ matrix using colour-science
-    primaries = np.concatenate((r_xy, g_xy, b_xy)).reshape(3, 2)
-    whitepoint = np.array(w_xy)
-    custom_colourspace = colour.RGB_Colourspace(
-        "Custom", primaries, whitepoint, whitepoint_name
-    )
-    custom_colourspace.use_derived_transformation_matrices()
-    XYZ_to_RGB = np.identity(4)
-    XYZ_to_RGB[:3, :3] = custom_colourspace.matrix_XYZ_to_RGB
-
-    # Create OCIO colorspace
-    cs = OCIO.ColorSpace()
-    cs.setName(f"{name} - Display")
-    cs.addAlias(f"{name.lower()}_display")
-    cs.setFamily("Display")
-    cs.setEncoding("hdr-video")
-    cs.setDescription(f"Convert CIE XYZ (D65 white) to {name}")
-    cs.setBitDepth(OCIO.BIT_DEPTH_F32)
-    cs.addCategory("file-io")
-
-    # Create transform group
-    group = OCIO.GroupTransform()
-
-    # Add RGB to XYZ matrix
-    matrix_transform = OCIO.MatrixTransform()
-    matrix_transform.setMatrix(XYZ_to_RGB.flatten().tolist())
-    group.appendTransform(matrix_transform)
-
-    # Add PQ EOTF using "CURVE - LINEAR_to_ST-2084" 1D LUT
-    pq_transform = OCIO.BuiltinTransform("CURVE - LINEAR_to_ST-2084")
-    pq_transform.setDirection(OCIO.TRANSFORM_DIR_FORWARD)
-    # Note that there is a fixed function implementation as well
-    # as of OCIO v2.0.0, however the 1D LUT may be faster to compute
-    # per the docs.
-    # https://opencolorio.readthedocs.io/en/latest/releases/
-    # ocio_2_4.html#new-fixed-function-transforms
-    #
-    # Note also that disguise does not yet support OCIO v2.4.0
-    # which is required for the fixed function transform.
-    #
-    # pq_transform = OCIO.FixedFunctionTransform()
-    # pq_transform.setStyle(OCIO.FIXED_FUNCTION_LIN_TO_PQ)
-    group.appendTransform(pq_transform)
-
-    cs.setTransform(group, OCIO.COLORSPACE_DIR_FROM_REFERENCE)
-
-    return cs
-
-
-def create_example_characterization() -> DisplayCharacterization:
-    """Create an example display characterization with measured data"""
-
-    # Example: Measured display data (replace with actual measurements)
-    char = DisplayCharacterization("Custom HDR Display")
-
-    # Measured primaries (replace with actual measurements)
-    char.primaries = {
-        "red": (0.680, 0.320),  # Measured red primary
-        "green": (0.265, 0.690),  # Measured green primary
-        "blue": (0.150, 0.060),  # Measured blue primary
-    }
-
-    # Measured white point
-    char.white_point = (0.3127, 0.3290)  # D65 or measured white point
-
-    # Measured display characteristics
-    char.black_level = 0.005  # cd/m²
-    char.peak_luminance = 1000.0  # cd/m²
-    char.contrast_ratio = char.peak_luminance / char.black_level
-
-    # Display response characteristics - specify what the display does (EOTF)
-    char.eotf_type = "PQ"  # Display EOTF
-    char.gamma_value = 2.4  # For gamma-based EOTF
-
-    # Viewing conditions
-    char.viewing_conditions = {
-        "ambient_light": 5.0,  # cd/m²
-        "viewing_angle": 0.0,  # degrees
-        "surround": "dark",  # 'dark', 'dim', 'average'
-    }
-
-    return char
+    return display_name
 
 
 # YAML Configuration Functions
@@ -757,7 +549,11 @@ def validate_config_data(config: Dict[str, Any]) -> bool:
             else:
                 print(message)
 
-    # Check for SDR EOTF usage with high brightness displays
+    # Advisory: SDR EOTF usage with high brightness displays.
+    # Never fatal, even in strict mode: an SDR-gamma-only front end driving
+    # a bright wall is the reference use case (§req:problem-statement), and
+    # §spec:signal-contract prefers gamma 2.4 on SDR-only links. Strict mode
+    # escalates measurement-plausibility failures, not encoding preferences.
     if validation_config.get("warn_on_sdr_eotf", True):
         peak_luminance = config["display"]["led_panel"]["luminance"]["peak_luminance"]
         eotf_type = config["display"]["led_processor"]["configuration"]["eotf"]["type"]
@@ -765,15 +561,11 @@ def validate_config_data(config: Dict[str, Any]) -> bool:
 
         if peak_luminance > sdr_threshold:
             if eotf_type == "GAMMA":
-                message = (
-                    f"⚠️  Warning: Using GAMMA EOTF with high brightness "
-                    f"({peak_luminance} cd/m²) - consider PQ for HDR content"
+                print(
+                    f"Note: GAMMA EOTF with high brightness "
+                    f"({peak_luminance} cd/m²) - PQ carries this range with "
+                    f"less quantization where the processor supports it"
                 )
-                if strict_mode:
-                    print(message)
-                    return False
-                else:
-                    print(message)
             elif eotf_type == "HLG":
                 message = (
                     f"⚠️  Warning: HLG EOTF limited to ~1000 cd/m² but "
@@ -859,34 +651,41 @@ def main():
     print(f"Black level: {characterization.black_level} cd/m²")
     print(f"Contrast ratio: {characterization.contrast_ratio:.0f}:1")
     print(f"EOTF: {characterization.eotf_type}")
-    mapping_config = config.get("ocio", {}).get("mapping", {})
-    print(f"Gamut mapping: {mapping_config.get('gamut', 'naive_clip')}")
-    print(f"Tone mapping: {mapping_config.get('tone', 'naive_clip')}")
     output_config_path = generate_output_filename(config, characterization)
     try:
         print("\nCreating base OCIO config...")
         ocio_config_obj = create_base_ocio_config(config)
-        gamut_mapping = mapping_config.get("gamut", "naive_clip")
-        tone_mapping = mapping_config.get("tone", "naive_clip")
-        cs = create_display_colorspace_from_characterization(
-            characterization, gamut_mapping=gamut_mapping, tone_mapping=tone_mapping
-        )
-        ocio_config_obj.addColorSpace(cs)
-        display_name = cs.getName()
-        ocio_config_obj.addDisplayView(display_name, "Output", cs.getName())
+        scene_reference, display_reference = derive_reference_spaces(ocio_config_obj)
+        print(f"Scene reference space: {scene_reference}")
+        print(f"Display reference space: {display_reference}")
+        if display_reference != DISPLAY_REFERENCE:
+            raise ValueError(
+                f"Base config display reference is '{display_reference}', "
+                f"but the emitted XYZ→native matrix assumes {DISPLAY_REFERENCE}"
+            )
+        cs = create_display_colorspace_from_characterization(characterization)
+        display_name = register_display(ocio_config_obj, cs)
+        try:
+            ocio_config_obj.validate()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Generated config failed OCIO validation: {exc}"
+            ) from exc
         with open(output_config_path, "w", encoding="utf-8") as f:
             f.write(ocio_config_obj.serialize())
         print("\n✅ Successfully created OCIO config!")
         print(f"   Output file: {output_config_path}")
-        print("   Colorspaces created: 1")
-        print("\nCreated colorspace:")
-        print(f"   - {display_name}")
+        print(f"\nRegistered display: {display_name}")
+        print(f"   View: {COLORIMETRIC_VIEW}")
         print("\n📋 Usage Instructions:")
         print(
             f"1. Set OCIO environment variable: export OCIO="
             f"{os.path.abspath(output_config_path)}"
         )
-        print("2. In your application, select the display colorspace above")
+        print(
+            f"2. In your application, select display '{display_name}' "
+            f"with view '{COLORIMETRIC_VIEW}'"
+        )
     except Exception as e:
         print(f"❌ Error creating OCIO config: {e}")
         import traceback

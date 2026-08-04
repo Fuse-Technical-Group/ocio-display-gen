@@ -70,18 +70,4 @@ ocio:
     aces_version: "v1.3"        # ACES version (e.g., v1.3, v1.2)
     ocio_version: "v2.3"        # OCIO version (e.g., v2.3, v2.2)
   output_config: "custom_display_config.ocio"  # Will be auto-generated if not specified
-  
-  # MAPPING STRATEGIES (how to handle color and luminance constraints)
-  mapping:
-    # Gamut mapping strategy (how to handle out-of-gamut colors)
-    # Options: "naive_clip" only (others would require custom 3D LUTs)
-    # Note: OCIO does not have builtin gamut mapping transforms
-    # "naive_clip" uses software-based luminance-preserving clipping
-    gamut: "naive_clip"
-    
-    # Tone mapping strategy (how to handle HDR/bright content)
-    # Options: "naive_clip", "reinhard", "aces", "exposure"
-    # Note: Advanced tone mapping would require custom implementations
-    # "naive_clip" uses simple proportional scaling to preserve chromaticity
-    tone: "naive_clip"
 

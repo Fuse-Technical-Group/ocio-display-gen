@@ -2,44 +2,18 @@
 
 ## Colorimetric foundation §road:colorimetric-foundation
 
-### Derive reference spaces from base config §road:derive-reference-spaces
-
-Replace the hardcoded ACEScg assumption in `OCIODisplayGen.py` with
-scene/display reference spaces derived from the base config's
-interchange roles. §spec:config-structure
-
-### Emit display colorspace §road:display-colorspace-emit
-
-Generate the wall as a display colorspace (`from_display_reference`:
-XYZ→native matrix, absolute luminance scale, inverse processor EOTF) in
-`OCIODisplayGen.py`, replacing the scene-referred colorspace path.
-§spec:config-structure. Depends on §road:derive-reference-spaces.
-
 ### White point policy option §road:white-point-policy
 
 Add an explicit `adapted`/`absolute` white point policy to
-`display_config.yaml` and wire it through matrix generation.
-§spec:white-point. Depends on §road:display-colorspace-emit.
+`display_config.yaml` and wire it through matrix generation. The seam
+exists: `chromatic_adaptation_transform` parameter on the matrix
+builder, currently fixed at CAT02. §spec:white-point.
 
 ### Signal contract metadata §road:signal-contract-metadata
 
 Record the required processor state (EOTF, intensity, disabled
 processing) in the generated config's descriptions from
 `display_config.yaml` fields. §spec:signal-contract.
-
-### Register display and colorimetric view §road:colorimetric-view-surface
-
-Register the wall as a named display with a colorimetric
-(no-rendering) view via `addDisplayView` and write the output config.
-§spec:config-structure. Depends on §road:display-colorspace-emit.
-
-**Verify:** Run `uv run ./OCIODisplayGen.py` with the sample yaml. Load
-the output config in Python (`ocio://`-free), list displays/views, and
-confirm the wall appears with its colorimetric view. Push D65 white and
-the measured primaries through the processor for that view and confirm
-code values match colour-science reference computation (matrix, CAT
-policy, inverse EOTF) within float tolerance; confirm the old
-ACEScg-matrix path is gone.
 
 ## Rendering views §road:rendering-views
 
@@ -146,9 +120,10 @@ rendering rationale at SPEC.md. §spec:view-transform.
 
 ### Remove dead pipeline code §road:remove-dead-code
 
-Delete the unused naive gamut/tone mapping functions, the legacy
-colorspace path, and the eotf-variants bug in `OCIODisplayGen.py`.
-§spec:config-structure.
+Delete the remaining exploratory scripts (`check_transforms.py`,
+`discover_builtins.py`, `test_builtin_transforms.py`) or fold them into
+real tests; the naive mapping helpers, legacy colorspace path, and
+eotf-variants bug are already removed. §spec:config-structure.
 
 **Verify:** `grep` finds no references to gamut-mapping strategies that
 do not exist in generated output; tests and lint pass; README quick
