@@ -237,6 +237,16 @@ Session flow, each stage observable in the session log:
   contract (§spec:signal-contract); refuse to measure when they
   diverge. Per patch batch, read back the processor's input metadata
   and confirm the wire format matches the session's declared format.
+- **Ambient gate** — the session opens and closes with a black-floor
+  reading (wall showing black; reflected ambient plus panel leakage)
+  and records it with the measurements. Characterization-grade
+  sessions refuse when the floor exceeds the budget implied by the
+  dark-patch ΔE tolerance; drift checks instead compare the live
+  floor against the one recorded at characterization, so ambient
+  changes cannot alias into apparent drift. Ambient is recorded and
+  gated, never compensated: a display cannot emit negative light to
+  cancel reflection, and baking a venue's ambient into the
+  characterization poisons the config everywhere else.
 - **Patch drive** — display patches via bmd-signal-gen on a DeckLink
   device, using its live color-update surface; probe patch sets
   (§spec:verification) are emitted in a format bmd-signal-gen consumes
