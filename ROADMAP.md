@@ -1,20 +1,5 @@
 # ocio-display-gen — Roadmap
 
-## Colorimetric foundation §road:colorimetric-foundation
-
-### White point policy option §road:white-point-policy
-
-Add an explicit `adapted`/`absolute` white point policy to
-`display_config.yaml` and wire it through matrix generation. The seam
-exists: `chromatic_adaptation_transform` parameter on the matrix
-builder, currently fixed at CAT02. §spec:white-point.
-
-### Signal contract metadata §road:signal-contract-metadata
-
-Record the required processor state (EOTF, intensity, disabled
-processing) in the generated config's descriptions from
-`display_config.yaml` fields. §spec:signal-contract.
-
 ## Rendering views §road:rendering-views
 
 ### VP Radiometric view §road:vp-radiometric-view

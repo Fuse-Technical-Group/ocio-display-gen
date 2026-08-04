@@ -149,7 +149,7 @@ against.
 
 ## Signal contract §spec:signal-contract
 
-*Status: not started*
+*Status: complete*
 
 The generated config is only valid while the processor stays in the
 state recorded in the characterization: fixed EOTF, locked intensity,
@@ -180,7 +180,7 @@ exponent, and a nonstandard decode state defeats on-site auditability.
 
 ## White point policy §spec:white-point
 
-*Status: not started*
+*Status: complete*
 
 When the wall's calibrated white differs from the content white (D65),
 the config applies one of two explicit policies, selected in
