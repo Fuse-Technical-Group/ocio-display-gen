@@ -51,6 +51,13 @@ COLORIMETRIC_VIEW = "Colorimetric"
 # OCIO's display-reference luminance anchor: linear 1.0 = 100 cd/m².
 REFERENCE_LUMINANCE = 100.0
 
+# White point policies (§spec:white-point):
+# "adapted": chromatic adaptation maps content white (D65) to the wall's
+# native white — preserves full brightness. "absolute": no adaptation —
+# colorimetrically exact within gamut, at the cost of peak brightness and
+# possible single-channel clipping when wall white differs from D65.
+WHITE_POINT_POLICIES = ("adapted", "absolute")
+
 
 class DisplayCharacterization:
     """Class to hold display characterization data"""
@@ -69,9 +76,20 @@ class DisplayCharacterization:
         self.eotf_type = "PQ"  # Display EOTF type: "PQ", "HLG", "GAMMA"
         self.gamma_value = 2.4  # For gamma-based EOTF (display property)
         self.measured_response: Optional[str] = None  # Custom measured response curve
-        self.viewing_conditions: Dict[
-            str, object
-        ] = {}  # Ambient light, viewing angle, etc.
+        self.white_point_policy = "adapted"  # "adapted" or "absolute"
+        # Processor state the config is valid for (§spec:signal-contract):
+        # locked intensity (free-form: percent or nits as configured) and
+        # whether color processing / dynamic features are disabled.
+        self.processor_intensity: Optional[str] = None
+        self.processor_processing_disabled: Optional[bool] = None
+
+
+def describe_processing_state(disabled: Optional[bool]) -> str:
+    """Processor color-processing / dynamic-features state for metadata
+    and console output (§spec:signal-contract)."""
+    if disabled is None:
+        return "(not recorded)"
+    return "disabled" if disabled else "NOT disabled"
 
 
 def create_display_xyz_to_native_matrix(
@@ -80,19 +98,34 @@ def create_display_xyz_to_native_matrix(
 ) -> npt.NDArray[np.float64]:
     """
     Build the 4x4 matrix from display-reference CIE XYZ (D65-adapted) to
-    the wall's native RGB.
+    the wall's native RGB, per the characterization's white point policy
+    (§spec:white-point).
 
-    Composes a Von Kries chromatic adaptation (display-reference D65 →
-    measured wall white) with the wall's derived XYZ→RGB matrix, so
-    native RGB (1, 1, 1) is the wall's measured white.
+    Policy "adapted": composes a Von Kries chromatic adaptation
+    (display-reference D65 → measured wall white) with the wall's derived
+    XYZ→RGB matrix, so native RGB (1, 1, 1) is the wall's measured white.
+    Policy "absolute": the derived XYZ→RGB matrix alone — no adaptation,
+    chromaticity is exact within gamut.
 
     Args:
         characterization: Measured display data (primaries, white point)
+            and white point policy
         chromatic_adaptation_transform: CAT name accepted by colour-science
+            (adapted policy only)
 
     Returns:
         4x4 matrix for an OCIO MatrixTransform (row-major)
+
+    Raises:
+        ValueError: For unknown white point policies.
     """
+    white_point_policy = characterization.white_point_policy
+    if white_point_policy not in WHITE_POINT_POLICIES:
+        raise ValueError(
+            f"Unknown white point policy '{white_point_policy}'; "
+            f"valid values: {', '.join(WHITE_POINT_POLICIES)}"
+        )
+
     primaries = np.array(
         [
             characterization.primaries["red"],
@@ -108,14 +141,17 @@ def create_display_xyz_to_native_matrix(
     )
     wall_space.use_derived_transformation_matrices()
 
-    cat_matrix = colour.adaptation.matrix_chromatic_adaptation_VonKries(
-        colour.xy_to_XYZ(np.array(D65_WHITE_XY)),
-        colour.xy_to_XYZ(white_xy),
-        transform=chromatic_adaptation_transform,
-    )
+    matrix_3x3 = wall_space.matrix_XYZ_to_RGB
+    if white_point_policy == "adapted":
+        cat_matrix = colour.adaptation.matrix_chromatic_adaptation_VonKries(
+            colour.xy_to_XYZ(np.array(D65_WHITE_XY)),
+            colour.xy_to_XYZ(white_xy),
+            transform=chromatic_adaptation_transform,
+        )
+        matrix_3x3 = matrix_3x3 @ cat_matrix
 
     matrix_4x4 = np.identity(4)
-    matrix_4x4[:3, :3] = wall_space.matrix_XYZ_to_RGB @ cat_matrix
+    matrix_4x4[:3, :3] = matrix_3x3
     return matrix_4x4
 
 
@@ -128,19 +164,22 @@ def create_display_colorspace_from_characterization(
 
     The colorspace is display-referred: its from_display_reference
     transform maps CIE XYZ (D65-adapted, 1.0 = 100 cd/m²) to the wall's
-    encoded native RGB. Pipeline: XYZ→native matrix (with chromatic
-    adaptation), absolute luminance scale, hard clip, inverse processor
+    encoded native RGB. Pipeline: XYZ→native matrix (white point policy
+    applied), absolute luminance scale, hard clip, inverse processor
     EOTF. It holds only measured colorimetry — exact within gamut,
-    hard-clipped outside.
+    hard-clipped outside. The chosen policy is recorded in the
+    colorspace description.
 
     Args:
-        characterization: Measured display data
-        chromatic_adaptation_transform: CAT for D65 → wall white adaptation
+        characterization: Measured display data, white point policy, and
+            processor state
+        chromatic_adaptation_transform: CAT for D65 → wall white
+            adaptation (adapted policy only)
 
     Raises:
         NotImplementedError: For HLG (an inverse EOTF without OOTF
             handling would be silently wrong).
-        ValueError: For unknown EOTF types.
+        ValueError: For unknown EOTF types or white point policies.
     """
     eotf_type = characterization.eotf_type
     if eotf_type == "HLG":
@@ -154,6 +193,32 @@ def create_display_colorspace_from_characterization(
 
     peak = characterization.peak_luminance
 
+    white_point_policy = characterization.white_point_policy
+    if white_point_policy == "absolute":
+        policy_note = "absolute (no chromatic adaptation)"
+    else:
+        policy_note = (
+            f"adapted ({chromatic_adaptation_transform}, D65 → wall white)"
+        )
+
+    # Signal contract (§spec:signal-contract): record the processor state
+    # the config is valid for, so operators can restore and audit it.
+    if eotf_type == "PQ":
+        contract_clauses = ["EOTF PQ"]
+    else:
+        contract_clauses = [f"EOTF GAMMA {characterization.gamma_value}"]
+    if characterization.processor_intensity is not None:
+        contract_clauses.append(f"intensity {characterization.processor_intensity}")
+    if characterization.processor_processing_disabled is not None:
+        contract_clauses.append(
+            "color processing and dynamic features "
+            f"{describe_processing_state(characterization.processor_processing_disabled)}"
+        )
+    signal_contract = (
+        "Signal contract: valid only while the processor holds this "
+        f"state — {', '.join(contract_clauses)}."
+    )
+
     cs = OCIO.ColorSpace(OCIO.REFERENCE_SPACE_DISPLAY)
     display_name = f"{characterization.name} - Display"
     cs.setName(display_name)
@@ -166,7 +231,9 @@ def create_display_colorspace_from_characterization(
         f"Black: {characterization.black_level} cd/m², "
         f"EOTF: {eotf_type}) "
         f"CIE-XYZ-D65 → native RGB matrix → luminance scale → "
-        f"hard clip → inverse {eotf_type} EOTF"
+        f"hard clip → inverse {eotf_type} EOTF. "
+        f"White point policy: {policy_note}. "
+        f"{signal_contract}"
     )
     cs.setBitDepth(OCIO.BIT_DEPTH_F32)
     cs.addCategory("file-io")
@@ -174,8 +241,10 @@ def create_display_colorspace_from_characterization(
 
     group = OCIO.GroupTransform()
 
-    # Stage 1: XYZ (D65-adapted) → native RGB, with chromatic adaptation.
-    # After this, native (1,1,1) = wall white at 100 cd/m² (Y = 1.0).
+    # Stage 1: XYZ (D65-adapted) → native RGB, per white point policy.
+    # Adapted: native (1,1,1) = wall white at 100 cd/m² (Y = 1.0).
+    # Absolute: no adaptation; D65 content white lands off the wall's
+    # neutral axis and may single-channel clip at stage 3.
     matrix_4x4 = create_display_xyz_to_native_matrix(
         characterization, chromatic_adaptation_transform
     )
@@ -323,28 +392,18 @@ def create_characterization_from_config(
     char.eotf_type = eotf_config["type"]
     char.gamma_value = eotf_config.get("gamma_value", 2.4)
 
-    # Combine viewing conditions, metrology, and processor configuration data
-    char.viewing_conditions = config.get("viewing_conditions", {}).copy()
-    if "metrology" in config:
-        char.viewing_conditions.update(config["metrology"])
-    if "configuration" in led_processor_config:
-        # Add processor configuration (excluding eotf which we handle separately)
-        processor_conf = led_processor_config["configuration"].copy()
-        if "eotf" in processor_conf:
-            del processor_conf["eotf"]
-        char.viewing_conditions.update(processor_conf)
-    # Add LED panel and processor info to viewing conditions
-    char.viewing_conditions["led_panel_manufacturer"] = led_panel_config["manufacturer"]
-    char.viewing_conditions["led_panel_model"] = led_panel_config["model"]
-    char.viewing_conditions["led_panel_version"] = led_panel_config["version"]
-    char.viewing_conditions["led_panel_last_calibrated"] = led_panel_config.get(
-        "last_calibrated", ""
+    # Processor signal-contract state (§spec:signal-contract). Optional:
+    # validate_config_data warns (or fails in strict mode) when absent.
+    processor_state = led_processor_config["configuration"]
+    intensity = processor_state.get("intensity")
+    char.processor_intensity = None if intensity is None else str(intensity)
+    char.processor_processing_disabled = processor_state.get("processing_disabled")
+
+    # White point policy is a generation decision, not a measurement, so
+    # it lives under ocio:. Validated at matrix-build time.
+    char.white_point_policy = config.get("ocio", {}).get(
+        "white_point_policy", "adapted"
     )
-    char.viewing_conditions["led_processor_manufacturer"] = led_processor_config[
-        "manufacturer"
-    ]
-    char.viewing_conditions["led_processor_model"] = led_processor_config["model"]
-    char.viewing_conditions["led_processor_version"] = led_processor_config["version"]
     return char
 
 
@@ -357,6 +416,7 @@ def load_validation_settings() -> Dict[str, Any]:
         "check_white_point": True,
         "check_luminance": True,
         "check_contrast": True,
+        "check_processor_state": True,
         "min_contrast_ratio": 100,
         "max_contrast_ratio": 10000,
         "warn_on_validation_failure": True,
@@ -549,6 +609,29 @@ def validate_config_data(config: Dict[str, Any]) -> bool:
             else:
                 print(message)
 
+    # Check processor signal-contract state (§spec:signal-contract): the
+    # config is only valid while the processor holds the recorded state,
+    # so a missing record leaves nothing to restore or audit.
+    if validation_config.get("check_processor_state", True):
+        processor_state = config["display"]["led_processor"].get("configuration", {})
+        for field, meaning in (
+            ("intensity", "locked processor intensity"),
+            ("processing_disabled", "color processing / dynamic features state"),
+        ):
+            if field in processor_state:
+                print(f"✓ Processor {field} recorded: {processor_state[field]}")
+                continue
+            message = (
+                f"❌ Warning: 'display.led_processor.configuration.{field}' "
+                f"({meaning}) is missing — the signal contract cannot be "
+                f"recorded in the config metadata"
+            )
+            if strict_mode:
+                print(message)
+                return False
+            else:
+                print(message)
+
     # Advisory: SDR EOTF usage with high brightness displays.
     # Never fatal, even in strict mode: an SDR-gamma-only front end driving
     # a bright wall is the reference use case (§req:problem-statement), and
@@ -651,6 +734,16 @@ def main():
     print(f"Black level: {characterization.black_level} cd/m²")
     print(f"Contrast ratio: {characterization.contrast_ratio:.0f}:1")
     print(f"EOTF: {characterization.eotf_type}")
+    intensity = characterization.processor_intensity
+    print(
+        f"Processor intensity: "
+        f"{intensity if intensity is not None else '(not recorded)'}"
+    )
+    print(
+        f"Color processing / dynamic features: "
+        f"{describe_processing_state(characterization.processor_processing_disabled)}"
+    )
+    print(f"White point policy: {characterization.white_point_policy}")
     output_config_path = generate_output_filename(config, characterization)
     try:
         print("\nCreating base OCIO config...")

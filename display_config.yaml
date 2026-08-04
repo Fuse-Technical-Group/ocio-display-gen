@@ -14,7 +14,7 @@ display:
 
   led_panel:
     manufacturer: "ROE"              # LED panel manufacturer
-    model: "Black Pearl 2v2"         # LED panel model
+    model: "Black Pearl 2 (NS)"      # LED panel model
     version: "2018"                  # Year, batch, or explicit version number
     last_calibrated: "2024-01-15"    # Last calibration date (ISO format: YYYY-MM-DD)
     
@@ -36,7 +36,7 @@ display:
   
   led_processor:
     manufacturer: "Brompton"         # LED processor manufacturer
-    model: "SX40"                    # LED processor model
+    model: "S8"                      # LED processor model
     version: "3.5.2"                 # Firmware or software version
     configuration:
       # DISPLAY EOTF SPECIFICATION (Electro-Optical Transfer Function)
@@ -47,6 +47,14 @@ display:
         gamma_value: 2.4   # Only include if type is "GAMMA"
       color_temperature: 6500    # Kelvin
       uniformity_correction: true  # Whether uniformity correction is applied
+      # PROCESSOR SIGNAL CONTRACT STATE
+      # The generated config is only valid while the processor holds this
+      # state; it is recorded in the config metadata for restore and audit.
+      intensity: "100%"          # Locked intensity/brightness as configured
+                                 # on the processor (percent or nits)
+      processing_disabled: true  # Color processing and dynamic features
+                                 # (dynamic calibration, dynamic contrast,
+                                 # overdrive, etc.) are disabled
 
 
 
@@ -69,5 +77,10 @@ ocio:
     config_version: "v2.1.0"    # config version (e.g., v2.1.0, v2.0.0)
     aces_version: "v1.3"        # ACES version (e.g., v1.3, v1.2)
     ocio_version: "v2.3"        # OCIO version (e.g., v2.3, v2.2)
+  # White point policy: how content white (D65) maps to the wall's native white.
+  #   "adapted" (default): chromatic adaptation to wall white — full brightness
+  #   "absolute": no adaptation — exact chromaticity, costs peak brightness
+  #               and may single-channel clip when wall white differs from D65
+  white_point_policy: "adapted"
   output_config: "custom_display_config.ocio"  # Will be auto-generated if not specified
 

@@ -18,6 +18,9 @@ GAMMA = 2.4
 def make_characterization(
     eotf_type: str = "GAMMA",
     white_point: tuple[float, float] = WALL_WHITEPOINT,
+    white_point_policy: str = "adapted",
+    intensity: str | None = None,
+    processing_disabled: bool | None = None,
 ) -> DisplayCharacterization:
     """Characterization with the sample-yaml wall measurements."""
     char = DisplayCharacterization("Test Wall")
@@ -31,6 +34,9 @@ def make_characterization(
     char.peak_luminance = PEAK_LUMINANCE
     char.eotf_type = eotf_type
     char.gamma_value = GAMMA
+    char.white_point_policy = white_point_policy
+    char.processor_intensity = intensity
+    char.processor_processing_disabled = processing_disabled
     return char
 
 
