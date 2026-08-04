@@ -70,8 +70,36 @@ def validate_display_reference(display_reference: str) -> None:
 # for measurement and verification work (§spec:view-transform).
 COLORIMETRIC_VIEW = "Colorimetric"
 
+# The default view (§spec:view-transform): colorimetric within the
+# wall's volume, ACES 2.0 gamut compression at its boundary, unity
+# system gamma through a configurable nits anchor.
+VP_RADIOMETRIC_VIEW = "VP Radiometric"
+
 # OCIO's display-reference luminance anchor: linear 1.0 = 100 cd/m².
 REFERENCE_LUMINANCE = 100.0
+
+# Above-peak overflow policies (§req:constraints): "clamp" is
+# radiometric to the ceiling and flat-lines above it; "shoulder" trades
+# exactness at the top of the range for a smooth rolloff confined there.
+OVERFLOW_POLICIES = ("clamp", "shoulder")
+DEFAULT_NITS_ANCHOR = 300.0
+DEFAULT_OVERFLOW_POLICY = "clamp"
+
+# Shoulder curve: exact identity below the knee, log rolloff above.
+SHOULDER_KNEE = 0.9  # fraction of full drive where the rolloff starts
+SHOULDER_END_SLOPE = 0.15  # curve slope where output reaches full drive
+
+# ACES2065-1 (AP0) primaries and white as rx,ry,gx,gy,bx,by,wx,wy — the
+# parameterization the ACES 2.0 JMh fixed functions take.
+AP0_CHROMATICITIES = [0.7347, 0.2653, 0.0, 1.0, 0.0001, -0.077, 0.32168, 0.33767]
+
+# Scene reference (AP0) → display reference (CIE-XYZ-D65) builtin.
+AP0_TO_XYZ_D65_BUILTIN = "UTILITY - ACES-AP0_to_CIE-XYZ-D65_BFD"
+
+# The ACES 2.0 _20 fixed functions require config profile >= 2.4; this
+# base config satisfies it (§spec:version-targeting).
+MIN_VP_RADIOMETRIC_PROFILE = (2, 4)
+ACES2_BASE_CONFIG_URI = "ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5"
 
 # White point policies (§spec:white-point):
 # "adapted": chromatic adaptation maps content white (D65) to the wall's
@@ -312,26 +340,229 @@ def create_display_colorspace_from_characterization(
     return cs
 
 
-def register_display(config: "OCIO.Config", colorspace: OCIO.ColorSpace) -> str:
+def _shoulder_overflow_transform() -> OCIO.LogCameraTransform:
     """
-    Register the wall as a named OCIO display with a colorimetric view.
+    The shoulder rolloff in drive space: y = a*log2(x + o) + b above the
+    knee k, exact identity (negatives included) below it.
 
-    Adds the colorspace to the config and registers a display named
-    after it (studio config convention: display name == display
-    colorspace name) with a "Colorimetric" view pointing at the bare
-    colorspace. The display is appended to the config's active-display
-    list without clobbering the base config's existing entries. An
-    empty active list means "all active" in OCIO, so it is left empty.
+    Constraints: y(k) = k and y'(k) = 1 (C1 continuity at the knee), and
+    y' = m where y reaches 1.0 (slope m at full drive). Solving:
+    a = (1 - k) / log2(1/m); u_k = a / ln 2 (log argument at the knee);
+    o = u_k - k; b = k - a*log2(u_k). A one-sided range clamp at 1.0
+    flat-lines the curve where the log crosses full drive.
+    """
+    knee = SHOULDER_KNEE
+    log_side_slope = (1.0 - knee) / float(np.log2(1.0 / SHOULDER_END_SLOPE))
+    knee_arg = log_side_slope / float(np.log(2.0))
+    lin_side_offset = knee_arg - knee
+    log_side_offset = knee - log_side_slope * float(np.log2(knee_arg))
+    return OCIO.LogCameraTransform(
+        base=2.0,
+        logSideSlope=[log_side_slope] * 3,
+        logSideOffset=[log_side_offset] * 3,
+        linSideSlope=[1.0] * 3,
+        linSideOffset=[lin_side_offset] * 3,
+        linSideBreak=[knee] * 3,
+        linearSlope=[1.0] * 3,
+    )
+
+
+def create_vp_radiometric_view_transform(
+    characterization: DisplayCharacterization,
+    nits_anchor: float,
+    overflow_policy: str,
+    chromatic_adaptation_transform: str = "CAT02",
+) -> OCIO.ViewTransform:
+    """
+    Build the VP Radiometric view transform (§spec:view-transform).
+
+    Scene-referred: maps scene reference (ACES2065-1) to display
+    reference (CIE-XYZ-D65). Pipeline: nits anchor scale (scene-linear
+    1.0 → anchor cd/m²), ACES 2.0 gamut compression in JMh at the
+    wall-gamut boundary (untouched core, hue-preserving edge), AP0 →
+    display-reference matrix, then the above-peak overflow policy
+    applied per channel in the wall's drive space via the same policy
+    matrix the display colorspace uses. End-to-end system gamma is 1.0.
+    The anchor, policy, and compressor parameterization are recorded in
+    the description (§spec:signal-contract).
+
+    Args:
+        characterization: Measured display data (primaries, white
+            point, peak) parameterizing the gamut compressor and drive
+            space
+        nits_anchor: cd/m² emitted for scene-linear 1.0 — the only
+            placement knob
+        overflow_policy: "clamp" or "shoulder" above-peak handling
+        chromatic_adaptation_transform: CAT for the drive-space matrix
+            (adapted white point policy only)
+
+    Raises:
+        ValueError: For unknown overflow policies or a missing measured
+            white point.
+    """
+    if overflow_policy not in OVERFLOW_POLICIES:
+        raise ValueError(
+            f"Unknown overflow policy '{overflow_policy}'; "
+            f"valid values: {', '.join(OVERFLOW_POLICIES)}"
+        )
+    white_point = characterization.white_point
+    if white_point is None:
+        raise ValueError("Characterization has no measured white point")
+
+    peak = characterization.peak_luminance
+    red = characterization.primaries["red"]
+    green = characterization.primaries["green"]
+    blue = characterization.primaries["blue"]
+
+    if overflow_policy == "shoulder":
+        policy_note = (
+            f"shoulder (log rolloff from {SHOULDER_KNEE} of full drive, "
+            f"hard limit at peak)"
+        )
+    else:
+        policy_note = "clamp (hard clamp at peak, radiometric to the ceiling)"
+
+    vt = OCIO.ViewTransform(OCIO.REFERENCE_SPACE_SCENE)
+    vt.setName(VP_RADIOMETRIC_VIEW)
+    vt.setDescription(
+        f"VP Radiometric rendering for {characterization.name}: "
+        f"colorimetric within the wall's volume, ACES 2.0 gamut "
+        f"compression at its boundary. "
+        f"Nits anchor: scene-linear 1.0 = {nits_anchor} cd/m² "
+        f"(unity system gamma). "
+        f"Overflow policy: {policy_note}. "
+        f"Gamut compressor: measured peak {peak} cd/m², "
+        f"primaries R{red} G{green} B{blue} W{white_point}."
+    )
+
+    group = OCIO.GroupTransform()
+
+    # Stage 1: nits anchor — scene-linear 1.0 → anchor cd/m² in
+    # display-linear units (1.0 = REFERENCE_LUMINANCE).
+    anchor_transform = OCIO.MatrixTransform()
+    anchor_matrix = np.diag([nits_anchor / REFERENCE_LUMINANCE] * 3 + [1.0])
+    anchor_transform.setMatrix(anchor_matrix.flatten().tolist())
+    group.appendTransform(anchor_transform)
+
+    # Stage 2: ACES 2.0 gamut compression sandwich in JMh, limited to
+    # the wall's measured gamut and peak. Interior colors untouched;
+    # compression confined to a smoothing zone at the boundary.
+    to_jmh = OCIO.FixedFunctionTransform(
+        OCIO.FIXED_FUNCTION_ACES_RGB_TO_JMH_20, params=AP0_CHROMATICITIES
+    )
+    group.appendTransform(to_jmh)
+    gamut_compress = OCIO.FixedFunctionTransform(
+        OCIO.FIXED_FUNCTION_ACES_GAMUT_COMPRESS_20,
+        params=[peak, *red, *green, *blue, *white_point],
+    )
+    group.appendTransform(gamut_compress)
+    from_jmh = OCIO.FixedFunctionTransform(
+        OCIO.FIXED_FUNCTION_ACES_RGB_TO_JMH_20, params=AP0_CHROMATICITIES
+    )
+    from_jmh.setDirection(OCIO.TRANSFORM_DIR_INVERSE)
+    group.appendTransform(from_jmh)
+
+    # Stage 3: AP0 → display reference (CIE-XYZ-D65).
+    group.appendTransform(OCIO.BuiltinTransform(AP0_TO_XYZ_D65_BUILTIN))
+
+    # Stage 4: into drive space — wall native RGB where 1.0 = full
+    # drive. Reuses the display colorspace's exact policy matrix so the
+    # view and colorspace compose transparently.
+    drive = np.diag(
+        [REFERENCE_LUMINANCE / peak] * 3 + [1.0]
+    ) @ create_display_xyz_to_native_matrix(
+        characterization, chromatic_adaptation_transform
+    )
+    to_drive = OCIO.MatrixTransform()
+    to_drive.setMatrix(drive.flatten().tolist())
+    group.appendTransform(to_drive)
+
+    # Stage 5: above-peak overflow policy, per channel in drive space.
+    # One-sided max clamp only: negatives pass through untouched here —
+    # the display colorspace clips low.
+    if overflow_policy == "shoulder":
+        group.appendTransform(_shoulder_overflow_transform())
+    ceiling = OCIO.RangeTransform()
+    ceiling.setMaxInValue(1.0)
+    ceiling.setMaxOutValue(1.0)
+    group.appendTransform(ceiling)
+
+    # Stage 6: back to display reference for the display colorspace.
+    drive_inverse: npt.NDArray[np.float64] = np.linalg.inv(drive)
+    from_drive = OCIO.MatrixTransform()
+    from_drive.setMatrix(drive_inverse.flatten().tolist())
+    group.appendTransform(from_drive)
+
+    vt.setTransform(group, OCIO.VIEWTRANSFORM_DIR_FROM_REFERENCE)
+    return vt
+
+
+def register_display(
+    config: "OCIO.Config",
+    colorspace: OCIO.ColorSpace,
+    characterization: DisplayCharacterization,
+    nits_anchor: float = DEFAULT_NITS_ANCHOR,
+    overflow_policy: str = DEFAULT_OVERFLOW_POLICY,
+    chromatic_adaptation_transform: str = "CAT02",
+) -> str:
+    """
+    Register the wall as a named OCIO display with its views.
+
+    Adds the colorspace and the VP Radiometric view transform to the
+    config and registers a display named after the colorspace (studio
+    config convention: display name == display colorspace name) with
+    "VP Radiometric" first — the OCIO default view — and the
+    "Colorimetric" view (bare colorspace) second. The display is
+    appended to the config's active-display list without clobbering the
+    base config's existing entries. An empty active list means "all
+    active" in OCIO, so it is left empty.
 
     Args:
         config: Base OCIO config to extend
         colorspace: Display-referred wall colorspace
+        characterization: Measured display data parameterizing the VP
+            Radiometric view
+        nits_anchor: cd/m² emitted for scene-linear 1.0
+        overflow_policy: "clamp" or "shoulder" above-peak handling
+        chromatic_adaptation_transform: CAT for D65 → wall white
+            (adapted policy only)
 
     Returns:
         The registered display name
+
+    Raises:
+        ValueError: When the base config's profile version cannot hold
+            the ACES 2.0 fixed functions, or for unknown overflow
+            policies.
     """
+    version = (config.getMajorVersion(), config.getMinorVersion())
+    if version < MIN_VP_RADIOMETRIC_PROFILE:
+        raise ValueError(
+            f"Base config profile version {version[0]}.{version[1]} cannot "
+            f"hold the ACES 2.0 fixed functions the VP Radiometric view "
+            f"uses (requires >= "
+            f"{MIN_VP_RADIOMETRIC_PROFILE[0]}.{MIN_VP_RADIOMETRIC_PROFILE[1]}); "
+            f"select the ACES 2.0 / OCIO 2.5 studio base config "
+            f"({ACES2_BASE_CONFIG_URI})"
+        )
+
+    view_transform = create_vp_radiometric_view_transform(
+        characterization,
+        nits_anchor,
+        overflow_policy,
+        chromatic_adaptation_transform,
+    )
     config.addColorSpace(colorspace)
+    config.addViewTransform(view_transform)
     display_name = colorspace.getName()
+    # First view added is the display's default. Keyword arguments are
+    # required: positional binds the colorspace-only overload.
+    config.addDisplayView(
+        display=display_name,
+        view=VP_RADIOMETRIC_VIEW,
+        viewTransform=VP_RADIOMETRIC_VIEW,
+        displayColorSpaceName=display_name,
+    )
     config.addDisplayView(display_name, COLORIMETRIC_VIEW, display_name)
 
     active_displays = [str(d) for d in config.getActiveDisplays()]
@@ -767,6 +998,13 @@ def main():
         f"{describe_processing_state(characterization.processor_processing_disabled)}"
     )
     print(f"White point policy: {characterization.white_point_policy}")
+    # VP Radiometric settings are generation decisions, not measurements,
+    # so they live under ocio: (§spec:view-transform).
+    vp_settings = config.get("ocio", {}).get("vp_radiometric", {})
+    nits_anchor = float(vp_settings.get("nits_anchor", DEFAULT_NITS_ANCHOR))
+    overflow_policy = vp_settings.get("overflow_policy", DEFAULT_OVERFLOW_POLICY)
+    print(f"VP Radiometric nits anchor: {nits_anchor} cd/m²")
+    print(f"VP Radiometric overflow policy: {overflow_policy}")
     output_config_path = generate_output_filename(config, characterization)
     try:
         print("\nCreating base OCIO config...")
@@ -776,7 +1014,13 @@ def main():
         print(f"Display reference space: {display_reference}")
         validate_display_reference(display_reference)
         cs = create_display_colorspace_from_characterization(characterization)
-        display_name = register_display(ocio_config_obj, cs)
+        display_name = register_display(
+            ocio_config_obj,
+            cs,
+            characterization,
+            nits_anchor=nits_anchor,
+            overflow_policy=overflow_policy,
+        )
         try:
             ocio_config_obj.validate()
         except Exception as exc:
@@ -788,7 +1032,14 @@ def main():
         print("\n✅ Successfully created OCIO config!")
         print(f"   Output file: {output_config_path}")
         print(f"\nRegistered display: {display_name}")
-        print(f"   View: {COLORIMETRIC_VIEW}")
+        default_view = ocio_config_obj.getDefaultView(display_name)
+        for view in ocio_config_obj.getViews(display_name):
+            marker = " (default)" if str(view) == default_view else ""
+            print(f"   View: {view}{marker}")
+        print(
+            f"   {VP_RADIOMETRIC_VIEW}: anchor {nits_anchor} cd/m², "
+            f"overflow policy {overflow_policy}"
+        )
         print("\n📋 Usage Instructions:")
         print(
             f"1. Set OCIO environment variable: export OCIO="
@@ -796,7 +1047,7 @@ def main():
         )
         print(
             f"2. In your application, select display '{display_name}' "
-            f"with view '{COLORIMETRIC_VIEW}'"
+            f"with view '{VP_RADIOMETRIC_VIEW}'"
         )
     except Exception as e:
         print(f"❌ Error creating OCIO config: {e}")

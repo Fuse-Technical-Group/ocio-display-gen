@@ -85,5 +85,12 @@ ocio:
   #   "absolute": no adaptation — exact chromaticity, costs peak brightness
   #               and may single-channel clip when wall white differs from D65
   white_point_policy: "adapted"
+  # VP RADIOMETRIC VIEW (default view; §spec:view-transform)
+  vp_radiometric:
+    nits_anchor: 300.0        # cd/m² emitted for scene-linear 1.0 — the only
+                              # placement knob; recorded in the config
+    overflow_policy: "clamp"  # above-peak handling: "clamp" (hard, radiometric
+                              # to the ceiling) or "shoulder" (narrow rolloff
+                              # confined to the top of the range)
   output_config: "custom_display_config.ocio"  # Will be auto-generated if not specified
 
