@@ -56,86 +56,6 @@ COLORIMETRIC_VIEW = "Colorimetric"
 REFERENCE_LUMINANCE = 100.0
 
 
-def naive_gamut_map_preserve_luminance(
-    rgb: npt.NDArray[np.float32],
-) -> npt.NDArray[np.float32]:
-    """
-    Naive gamut mapping that preserves luminance while constraining chromaticity.
-
-    Strategy:
-    1. Calculate relative luminance
-    2. If any RGB values are negative, use a different approach
-    3. Scale negative values to zero while preserving ratios
-    4. Ensure all values are non-negative
-
-    Args:
-        rgb: RGB values (can be negative or >1.0)
-
-    Returns:
-        RGB values with valid chromaticity, attempting to preserve luminance
-    """
-    # Convert to numpy array if needed
-    rgb = np.asarray(rgb, dtype=np.float32)
-
-    # Calculate relative luminance (ITU-R BT.709 weights)
-    original_luminance = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
-
-    # Handle zero or negative luminance
-    if original_luminance <= 0:
-        return np.array([0.0, 0.0, 0.0], dtype=np.float32)
-
-    # Simple clipping approach for naive implementation
-    # In practice, more sophisticated gamut mapping would be used
-    clipped_rgb = np.clip(rgb, 0.0, np.inf)  # Remove negative values
-
-    # If we clipped any values, try to preserve luminance by scaling
-    if not np.allclose(rgb, clipped_rgb):
-        clipped_luminance = (
-            0.2126 * clipped_rgb[0] + 0.7152 * clipped_rgb[1] + 0.0722 * clipped_rgb[2]
-        )
-        if clipped_luminance > 0:
-            # Scale to preserve original luminance
-            scale_factor = original_luminance / clipped_luminance
-            clipped_rgb *= scale_factor
-
-    return clipped_rgb.astype(np.float32)
-
-
-def naive_tone_map_preserve_chromaticity(
-    rgb: npt.NDArray[np.float32], max_luminance: float = 1.0
-) -> npt.NDArray[np.float32]:
-    """
-    Naive tone mapping that preserves chromaticity while constraining luminance.
-
-    Strategy:
-    1. Find maximum component (simple luminance proxy)
-    2. Scale all components proportionally if exceeding max_luminance
-    3. Preserve color ratios (chromaticity)
-
-    Args:
-        rgb: RGB values (assumed valid chromaticity, may be >1.0)
-        max_luminance: Maximum allowed luminance (typically 1.0)
-
-    Returns:
-        RGB values within luminance range, preserving chromaticity
-    """
-    # Convert to numpy array if needed
-    rgb = np.asarray(rgb, dtype=np.float32)
-
-    # Find maximum component as luminance proxy
-    max_component = np.max(rgb)
-
-    # No tone mapping needed if within range
-    if max_component <= max_luminance:
-        return rgb
-
-    # Scale all components proportionally (preserves chromaticity)
-    scale_factor = max_luminance / max_component
-    result = rgb * scale_factor
-
-    return result.astype(np.float32)
-
-
 class DisplayCharacterization:
     """Class to hold display characterization data"""
 
@@ -339,41 +259,6 @@ def register_display(config: "OCIO.Config", colorspace: OCIO.ColorSpace) -> str:
         config.setActiveViews(f"{active_views}, {COLORIMETRIC_VIEW}")
 
     return display_name
-
-
-def create_example_characterization() -> DisplayCharacterization:
-    """Create an example display characterization with measured data"""
-
-    # Example: Measured display data (replace with actual measurements)
-    char = DisplayCharacterization("Custom HDR Display")
-
-    # Measured primaries (replace with actual measurements)
-    char.primaries = {
-        "red": (0.680, 0.320),  # Measured red primary
-        "green": (0.265, 0.690),  # Measured green primary
-        "blue": (0.150, 0.060),  # Measured blue primary
-    }
-
-    # Measured white point
-    char.white_point = (0.3127, 0.3290)  # D65 or measured white point
-
-    # Measured display characteristics
-    char.black_level = 0.005  # cd/m²
-    char.peak_luminance = 1000.0  # cd/m²
-    char.contrast_ratio = char.peak_luminance / char.black_level
-
-    # Display response characteristics - specify what the display does (EOTF)
-    char.eotf_type = "PQ"  # Display EOTF
-    char.gamma_value = 2.4  # For gamma-based EOTF
-
-    # Viewing conditions
-    char.viewing_conditions = {
-        "ambient_light": 5.0,  # cd/m²
-        "viewing_angle": 0.0,  # degrees
-        "surround": "dark",  # 'dark', 'dim', 'average'
-    }
-
-    return char
 
 
 # YAML Configuration Functions
