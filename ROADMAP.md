@@ -95,6 +95,37 @@ patch and confirm the report flags it. Confirm the measurement guide
 walks a reader from patch generation to a passing report using only
 shipped tooling.
 
+## Closed-loop measurement §road:closed-loop-measurement
+
+### Processor state snapshot §road:processor-state-snapshot
+
+Add a CLI surface that snapshots a Brompton processor's state
+read-only via the Tessera HTTP API, diffs it against the yaml's
+recorded signal contract, and reports drift (including live input
+metadata vs. declared wire format). §spec:measurement-loop.
+
+### Session orchestrator §road:session-orchestrator
+
+Add the one-command measurement session: contract audit gate, patch
+drive via bmd-signal-gen's live color-update API on a DeckLink,
+instrument reads behind a Colorimetry Research driver contract, and
+emission of the measurements file consumed by the ΔE report.
+§spec:measurement-loop. Depends on §road:probe-patches,
+§road:delta-e-report, §road:processor-state-snapshot. Blocked in part
+— sessions on SDI / 10-bit YCbCr links await wire-format validation
+upstream in bmd-signal-gen (RGB 12-bit is validated today); unblocked
+per format as bmd-signal-gen's spec records validation.
+
+**Verify:** With a mock instrument driver that returns the session's
+own predictions: run the session command end-to-end and confirm it
+produces a measurements file and a passing ΔE report; perturb the
+recorded signal contract (e.g., wrong gamma in yaml vs. live
+processor) and confirm the session refuses to measure; declare a wire
+format the live input metadata contradicts (e.g., 8-bit negotiated)
+and confirm the session aborts with the mismatch named. With real
+hardware (wall + CR-300): complete a full session and confirm the
+report matches a manually measured spot-check patch.
+
 ## Documentation truth §road:documentation-truth
 
 ### Prune aspirational docs §road:prune-fiction-docs
