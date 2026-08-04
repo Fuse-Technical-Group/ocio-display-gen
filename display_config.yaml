@@ -47,6 +47,14 @@ display:
         gamma_value: 2.4   # Only include if type is "GAMMA"
       color_temperature: 6500    # Kelvin
       uniformity_correction: true  # Whether uniformity correction is applied
+      # PROCESSOR SIGNAL CONTRACT STATE
+      # The generated config is only valid while the processor holds this
+      # state; it is recorded in the config metadata for restore and audit.
+      intensity: "100%"          # Locked intensity/brightness as configured
+                                 # on the processor (percent or nits)
+      processing_disabled: true  # Color processing and dynamic features
+                                 # (dynamic calibration, dynamic contrast,
+                                 # overdrive, etc.) are disabled
 
 
 

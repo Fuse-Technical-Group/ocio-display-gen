@@ -77,6 +77,11 @@ class DisplayCharacterization:
         self.gamma_value = 2.4  # For gamma-based EOTF (display property)
         self.measured_response: Optional[str] = None  # Custom measured response curve
         self.white_point_policy = "adapted"  # "adapted" or "absolute"
+        # Processor state the config is valid for (§spec:signal-contract):
+        # locked intensity (free-form: percent or nits as configured) and
+        # whether color processing / dynamic features are disabled.
+        self.processor_intensity: Optional[str] = None
+        self.processor_processing_disabled: Optional[bool] = None
         self.viewing_conditions: Dict[
             str, object
         ] = {}  # Ambient light, viewing angle, etc.
@@ -190,6 +195,25 @@ def create_display_colorspace_from_characterization(
             f"adapted ({chromatic_adaptation_transform}, D65 → wall white)"
         )
 
+    # Signal contract (§spec:signal-contract): record the processor state
+    # the config is valid for, so operators can restore and audit it.
+    if eotf_type == "PQ":
+        contract_clauses = ["EOTF PQ"]
+    else:
+        contract_clauses = [f"EOTF GAMMA {characterization.gamma_value}"]
+    if characterization.processor_intensity is not None:
+        contract_clauses.append(f"intensity {characterization.processor_intensity}")
+    if characterization.processor_processing_disabled is not None:
+        contract_clauses.append(
+            "color processing and dynamic features disabled"
+            if characterization.processor_processing_disabled
+            else "color processing NOT disabled"
+        )
+    signal_contract = (
+        "Signal contract: valid only while the processor holds this "
+        f"state — {', '.join(contract_clauses)}."
+    )
+
     cs = OCIO.ColorSpace(OCIO.REFERENCE_SPACE_DISPLAY)
     display_name = f"{characterization.name} - Display"
     cs.setName(display_name)
@@ -203,7 +227,8 @@ def create_display_colorspace_from_characterization(
         f"EOTF: {eotf_type}) "
         f"CIE-XYZ-D65 → native RGB matrix → luminance scale → "
         f"hard clip → inverse {eotf_type} EOTF. "
-        f"White point policy: {policy_note}"
+        f"White point policy: {policy_note}. "
+        f"{signal_contract}"
     )
     cs.setBitDepth(OCIO.BIT_DEPTH_F32)
     cs.addCategory("file-io")
@@ -361,6 +386,13 @@ def create_characterization_from_config(
     eotf_config = led_processor_config["configuration"]["eotf"]
     char.eotf_type = eotf_config["type"]
     char.gamma_value = eotf_config.get("gamma_value", 2.4)
+
+    # Processor signal-contract state (§spec:signal-contract). Optional:
+    # validate_config_data warns (or fails in strict mode) when absent.
+    processor_state = led_processor_config["configuration"]
+    intensity = processor_state.get("intensity")
+    char.processor_intensity = None if intensity is None else str(intensity)
+    char.processor_processing_disabled = processor_state.get("processing_disabled")
 
     # White point policy is a generation decision, not a measurement, so
     # it lives under ocio:. Validated at matrix-build time.
@@ -594,6 +626,28 @@ def validate_config_data(config: Dict[str, Any]) -> bool:
             else:
                 print(message)
 
+    # Check processor signal-contract state (§spec:signal-contract): the
+    # config is only valid while the processor holds the recorded state,
+    # so a missing record leaves nothing to restore or audit.
+    processor_state = config["display"]["led_processor"].get("configuration", {})
+    for field, meaning in (
+        ("intensity", "locked processor intensity"),
+        ("processing_disabled", "color processing / dynamic features state"),
+    ):
+        if field not in processor_state:
+            message = (
+                f"❌ Warning: 'display.led_processor.configuration.{field}' "
+                f"({meaning}) is missing — the signal contract cannot be "
+                f"recorded in the config metadata"
+            )
+            if strict_mode:
+                print(message)
+                return False
+            else:
+                print(message)
+        else:
+            print(f"✓ Processor {field} recorded: {processor_state[field]}")
+
     # Advisory: SDR EOTF usage with high brightness displays.
     # Never fatal, even in strict mode: an SDR-gamma-only front end driving
     # a bright wall is the reference use case (§req:problem-statement), and
@@ -696,6 +750,15 @@ def main():
     print(f"Black level: {characterization.black_level} cd/m²")
     print(f"Contrast ratio: {characterization.contrast_ratio:.0f}:1")
     print(f"EOTF: {characterization.eotf_type}")
+    intensity = characterization.processor_intensity
+    print(f"Processor intensity: {intensity if intensity else '(not recorded)'}")
+    if characterization.processor_processing_disabled is None:
+        processing_state = "(not recorded)"
+    elif characterization.processor_processing_disabled:
+        processing_state = "disabled"
+    else:
+        processing_state = "NOT disabled"
+    print(f"Color processing / dynamic features: {processing_state}")
     print(f"White point policy: {characterization.white_point_policy}")
     output_config_path = generate_output_filename(config, characterization)
     try:

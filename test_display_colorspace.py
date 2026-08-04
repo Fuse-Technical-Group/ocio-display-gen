@@ -26,6 +26,7 @@ from OCIODisplayGen import (
     create_characterization_from_config,
     create_display_colorspace_from_characterization,
     create_display_xyz_to_native_matrix,
+    validate_config_data,
 )
 
 # PQ code values (SMPTE ST 2084), absolute nits
@@ -207,3 +208,84 @@ def test_yaml_white_point_policy_defaults_to_adapted() -> None:
     config["ocio"].pop("white_point_policy", None)
     char = create_characterization_from_config(config)
     assert char.white_point_policy == "adapted"
+
+
+# Signal contract (§spec:signal-contract): the description records the
+# processor state the config is valid for — EOTF, locked intensity,
+# processing/dynamic features disabled.
+
+
+def test_description_records_signal_contract_gamma() -> None:
+    cs = create_display_colorspace_from_characterization(
+        make_characterization(intensity="100%", processing_disabled=True)
+    )
+    desc = cs.getDescription()
+    assert "Signal contract" in desc
+    assert "EOTF GAMMA 2.4" in desc
+    assert "intensity 100%" in desc
+    assert "color processing and dynamic features disabled" in desc
+
+
+def test_description_signal_contract_pq_has_no_gamma_value() -> None:
+    cs = create_display_colorspace_from_characterization(
+        make_characterization("PQ", intensity="100%", processing_disabled=True)
+    )
+    desc = cs.getDescription()
+    assert "EOTF PQ" in desc
+    assert "GAMMA" not in desc
+    assert "2.4" not in desc
+
+
+def test_description_records_processing_not_disabled() -> None:
+    cs = create_display_colorspace_from_characterization(
+        make_characterization(intensity="100%", processing_disabled=False)
+    )
+    assert "color processing NOT disabled" in cs.getDescription()
+
+
+def test_description_omits_intensity_when_absent() -> None:
+    cs = create_display_colorspace_from_characterization(
+        make_characterization(processing_disabled=True)
+    )
+    desc = cs.getDescription()
+    assert "Signal contract" in desc
+    assert "intensity" not in desc
+
+
+def test_yaml_processor_state_parsed() -> None:
+    char = create_characterization_from_config(
+        copy.deepcopy(sample_yaml_config())
+    )
+    assert char.processor_intensity == "100%"
+    assert char.processor_processing_disabled is True
+
+
+def test_yaml_processor_state_absent_is_none() -> None:
+    config = copy.deepcopy(sample_yaml_config())
+    processor_conf = config["display"]["led_processor"]["configuration"]
+    processor_conf.pop("intensity", None)
+    processor_conf.pop("processing_disabled", None)
+    char = create_characterization_from_config(config)
+    assert char.processor_intensity is None
+    assert char.processor_processing_disabled is None
+
+
+# Validation (§spec:signal-contract): missing processor-state fields fail
+# loud in strict mode, warn otherwise.
+
+
+def config_without_processor_state(strict_mode: bool) -> dict:
+    config = copy.deepcopy(sample_yaml_config())
+    config["validation"]["strict_mode"] = strict_mode
+    processor_conf = config["display"]["led_processor"]["configuration"]
+    processor_conf.pop("intensity", None)
+    processor_conf.pop("processing_disabled", None)
+    return config
+
+
+def test_validation_missing_processor_state_strict_fails() -> None:
+    assert validate_config_data(config_without_processor_state(True)) is False
+
+
+def test_validation_missing_processor_state_non_strict_warns() -> None:
+    assert validate_config_data(config_without_processor_state(False)) is True
