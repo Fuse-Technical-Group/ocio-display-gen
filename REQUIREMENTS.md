@@ -48,7 +48,12 @@ and corrected.
 - Switching rendering intent is an operator action in the media server
   (view selection), not a config regeneration.
 - Re-running the tool on the same measurements reproduces the same
-  config (deterministic output).
+  config, byte for byte (deterministic output — also the foundation
+  of hash-based provenance).
+- **Provenance:** measured data is machine-written and immutable;
+  human input is confined to decisions and acceptance. Every
+  generated artifact records the content hashes of its inputs;
+  stale or tampered chains are detected, not silently consumed.
 - **SDR-front-end capability:** a wall whose processor accepts only
   gamma-encoded SDR signal reaches its full measured luminance and
   gamut range when driven from scene-linear content through the
@@ -89,6 +94,12 @@ and corrected.
   — no manual patch stepping, no measurement transcription. Re-running
   before a show takes minutes, so drift is caught before an audience
   sees it.
+- As a lead, I accept a characterization run by recording its hash as
+  the measurement of record — I never edit measured values by hand,
+  because a human editing machine-measured data only introduces error.
+- As a lead handed a config of unknown vintage on a show machine, I
+  can trace it to the exact measurements and decisions that produced
+  it, and prove whether those files are still the ones on disk.
 
 ## Quality attributes §req:quality-attributes
 
