@@ -44,6 +44,28 @@ def derive_reference_spaces(ocio_config: "OCIO.Config") -> Tuple[str, str]:
 DISPLAY_REFERENCE = "CIE-XYZ-D65"
 D65_WHITE_XY: Tuple[float, float] = (0.3127, 0.3290)
 
+# Known names for that same space — CIE XYZ, D65-adapted, 1.0 = 100 cd/m².
+# The ACES 1.3 studio config calls it "CIE-XYZ-D65"; the ACES 2.0 / OCIO 2.5
+# studio config renames it "CIE XYZ-D65 - Display-referred". The emitted
+# matrix's assumption holds for both.
+KNOWN_DISPLAY_REFERENCES = (DISPLAY_REFERENCE, "CIE XYZ-D65 - Display-referred")
+
+
+def validate_display_reference(display_reference: str) -> None:
+    """
+    Fail loud when the base config's derived display reference is not a
+    known CIE-XYZ-D65 space the emitted matrix assumes.
+
+    Raises:
+        ValueError: For any name not in KNOWN_DISPLAY_REFERENCES.
+    """
+    if display_reference not in KNOWN_DISPLAY_REFERENCES:
+        raise ValueError(
+            f"Base config display reference is '{display_reference}', "
+            f"but the emitted XYZ→native matrix assumes one of: "
+            f"{', '.join(KNOWN_DISPLAY_REFERENCES)}"
+        )
+
 # The colorimetric view: the bare display colorspace with hard clip,
 # for measurement and verification work (§spec:view-transform).
 COLORIMETRIC_VIEW = "Colorimetric"
@@ -712,6 +734,7 @@ def create_base_ocio_config(config: Dict[str, Any]) -> "OCIO.Config":
         print(f"❌ Error loading base configuration: {e}")
         print(f"   Attempted URL: {ocio_url}")
         print("   Available configurations:")
+        print("     - ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5")
         print("     - ocio://studio-config-v2.1.0_aces-v1.3_ocio-v2.3")
         print("     - ocio://aces-config-v2.1.0_aces-v1.3_ocio-v2.3")
         print("   Please check your configuration parameters.")
@@ -751,11 +774,7 @@ def main():
         scene_reference, display_reference = derive_reference_spaces(ocio_config_obj)
         print(f"Scene reference space: {scene_reference}")
         print(f"Display reference space: {display_reference}")
-        if display_reference != DISPLAY_REFERENCE:
-            raise ValueError(
-                f"Base config display reference is '{display_reference}', "
-                f"but the emitted XYZ→native matrix assumes {DISPLAY_REFERENCE}"
-            )
+        validate_display_reference(display_reference)
         cs = create_display_colorspace_from_characterization(characterization)
         display_name = register_display(ocio_config_obj, cs)
         try:

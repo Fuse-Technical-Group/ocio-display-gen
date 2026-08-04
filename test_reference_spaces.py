@@ -8,6 +8,7 @@ import pytest
 
 import OCIODisplayGen
 from conftest import (
+    ACES2_STUDIO_CONFIG_URI,
     STUDIO_CONFIG_URI,
     WALL_PRIMARIES,
     WALL_WHITEPOINT,
@@ -15,14 +16,64 @@ from conftest import (
 )
 from OCIODisplayGen import (
     D65_WHITE_XY,
+    DISPLAY_REFERENCE,
+    KNOWN_DISPLAY_REFERENCES,
+    create_base_ocio_config,
     create_display_xyz_to_native_matrix,
     derive_reference_spaces,
+    validate_display_reference,
 )
+
+ACES2_DISPLAY_REFERENCE = "CIE XYZ-D65 - Display-referred"
 
 
 def test_studio_config_roles_resolve() -> None:
     config = OCIO.Config.CreateFromFile(STUDIO_CONFIG_URI)
     assert derive_reference_spaces(config) == ("ACES2065-1", "CIE-XYZ-D65")
+
+
+def test_aces2_studio_config_roles_resolve() -> None:
+    config = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
+    assert derive_reference_spaces(config) == (
+        "ACES2065-1",
+        ACES2_DISPLAY_REFERENCE,
+    )
+
+
+def test_create_base_ocio_config_selects_aces2_studio() -> None:
+    config = create_base_ocio_config(
+        {
+            "ocio": {
+                "base_config": {
+                    "type": "studio",
+                    "config_version": "v4.0.0",
+                    "aces_version": "v2.0",
+                    "ocio_version": "v2.5",
+                }
+            }
+        }
+    )
+    assert (config.getMajorVersion(), config.getMinorVersion()) == (2, 5)
+    assert derive_reference_spaces(config) == (
+        "ACES2065-1",
+        ACES2_DISPLAY_REFERENCE,
+    )
+
+
+def test_both_studio_display_reference_names_known() -> None:
+    # The 1.3 and 2.0 studio configs name the same space differently.
+    assert DISPLAY_REFERENCE in KNOWN_DISPLAY_REFERENCES
+    assert ACES2_DISPLAY_REFERENCE in KNOWN_DISPLAY_REFERENCES
+
+
+@pytest.mark.parametrize("name", KNOWN_DISPLAY_REFERENCES)
+def test_known_display_references_accepted(name: str) -> None:
+    validate_display_reference(name)
+
+
+def test_unknown_display_reference_fails_loud() -> None:
+    with pytest.raises(ValueError, match="Rec709"):
+        validate_display_reference("Rec709")
 
 
 def test_missing_interchange_roles_raise() -> None:

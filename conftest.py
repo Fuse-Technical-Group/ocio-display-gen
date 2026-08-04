@@ -7,6 +7,7 @@ import numpy.typing as npt
 from OCIODisplayGen import D65_WHITE_XY, DisplayCharacterization
 
 STUDIO_CONFIG_URI = "ocio://studio-config-v2.1.0_aces-v1.3_ocio-v2.3"
+ACES2_STUDIO_CONFIG_URI = "ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5"
 
 # Sample wall measurements from display_config.yaml
 WALL_PRIMARIES = np.array([[0.680, 0.320], [0.265, 0.690], [0.150, 0.060]])
