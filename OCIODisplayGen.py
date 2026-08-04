@@ -454,6 +454,12 @@ def create_vp_radiometric_view_transform(
             f"Unknown overflow policy '{overflow_policy}'; "
             f"valid values: {', '.join(OVERFLOW_POLICIES)}"
         )
+    # A non-positive or non-finite anchor would generate a validating
+    # config that emits black or inverted signal — fail loud instead.
+    if not (np.isfinite(nits_anchor) and nits_anchor > 0.0):
+        raise ValueError(
+            f"Nits anchor must be a positive finite value in cd/m², got {nits_anchor}"
+        )
     peak, red, green, blue, white_point = _measured_wall_gamut(characterization)
 
     if overflow_policy == "shoulder":
@@ -748,7 +754,12 @@ def create_characterization_from_config(
     luminance_config = led_panel_config["luminance"]
     char.black_level = luminance_config["black_level"]
     char.peak_luminance = luminance_config["peak_luminance"]
-    char.contrast_ratio = char.peak_luminance / char.black_level
+    # Guard the division: non-strict validation lets a zero black level
+    # through with a warning.
+    if char.black_level > 0:
+        char.contrast_ratio = char.peak_luminance / char.black_level
+    else:
+        char.contrast_ratio = float("inf")
 
     # Get EOTF configuration from display.led_processor.configuration.eotf
     if (
@@ -936,8 +947,13 @@ def validate_config_data(config: Dict[str, Any]) -> bool:
         black_level = config["display"]["led_panel"]["luminance"]["black_level"]
         peak_luminance = config["display"]["led_panel"]["luminance"]["peak_luminance"]
 
-        if black_level < 0:
-            message = "❌ Warning: Black level cannot be negative"
+        if black_level <= 0:
+            # A measured black level is never exactly zero; zero usually
+            # means the instrument floored or the field was guessed.
+            message = (
+                "❌ Warning: Black level must be positive (a measured "
+                "black level is never exactly zero)"
+            )
             if strict_mode:
                 print(message)
                 return False
@@ -960,9 +976,10 @@ def validate_config_data(config: Dict[str, Any]) -> bool:
             else:
                 print(message)
 
-    # Check contrast ratio
-    if validation_config.get("check_contrast", True):
-        black_level = float(config["display"]["led_panel"]["luminance"]["black_level"])
+    # Check contrast ratio (skipped for non-positive black level, which
+    # the luminance check above already reported).
+    black_level = float(config["display"]["led_panel"]["luminance"]["black_level"])
+    if validation_config.get("check_contrast", True) and black_level > 0:
         peak_luminance = float(
             config["display"]["led_panel"]["luminance"]["peak_luminance"]
         )
@@ -1099,7 +1116,7 @@ def main():
     print("Validating configuration data...")
     if not validate_config_data(config):
         print("❌ Configuration validation failed. Please check your measurements.")
-        return
+        sys.exit(1)
     print("Creating display characterization...")
     characterization = create_characterization_from_config(config)
     print(f"\nDisplay: {characterization.name}")
@@ -1120,7 +1137,11 @@ def main():
     # VP Radiometric settings are generation decisions, not measurements,
     # so they live under ocio: (§spec:view-transform).
     vp_settings = config.get("ocio", {}).get("vp_radiometric", {})
-    nits_anchor = float(vp_settings.get("nits_anchor", DEFAULT_NITS_ANCHOR))
+    try:
+        nits_anchor = float(vp_settings.get("nits_anchor", DEFAULT_NITS_ANCHOR))
+    except (TypeError, ValueError):
+        print("❌ Error: 'ocio.vp_radiometric.nits_anchor' must be a number")
+        sys.exit(1)
     overflow_policy = vp_settings.get("overflow_policy", DEFAULT_OVERFLOW_POLICY)
     print(f"VP Radiometric nits anchor: {nits_anchor} cd/m²")
     print(f"VP Radiometric overflow policy: {overflow_policy}")
@@ -1178,6 +1199,7 @@ def main():
         import traceback
 
         traceback.print_exc()
+        sys.exit(1)
 
 
 # Example usage for single display characterization

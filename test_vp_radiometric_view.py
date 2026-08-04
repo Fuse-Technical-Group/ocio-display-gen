@@ -290,6 +290,14 @@ def test_out_of_gamut_sweep_is_smooth(clamp_setup: Setup) -> None:
 # --- Failure modes ---
 
 
+def test_non_positive_or_non_finite_nits_anchor_raises() -> None:
+    for bad_anchor in (0.0, -300.0, float("nan"), float("inf")):
+        with pytest.raises(ValueError, match="[Nn]its anchor"):
+            create_vp_radiometric_view_transform(
+                make_characterization(), bad_anchor, "clamp"
+            )
+
+
 def test_unknown_overflow_policy_raises() -> None:
     with pytest.raises(ValueError, match="shoulder"):
         create_vp_radiometric_view_transform(
