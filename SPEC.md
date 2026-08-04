@@ -27,14 +27,29 @@ in the system is orientation- or geometry-specific.
 
 The wall (panels + processor, as configured for show) is characterized
 as a single black box: known code values in, measured light out.
-`display_config.yaml` records the measurement:
+Characterization input is split along the human/machine line into two
+files the generator consumes together:
 
-- Panel and processor identity, firmware, calibration date.
-- Measured native primaries and white point (CIE xy).
-- Measured black level and peak luminance (cd/m², absolute).
-- Processor output EOTF as configured (PQ, HLG, or gamma with value),
-  or a measured per-channel response when the ideal curve deviates.
-- Metrology: instrument, date, geometry, ambient conditions.
+- A **decisions file** (human-authored, reviewed): show naming, nits
+  anchor, overflow policy, white point policy, target OCIO tier,
+  validation mode, the *intended* processor lockdown state — and a
+  promotion pointer to the measurement artifact of record as
+  `{file, sha256}` (§spec:provenance).
+- A **measurements artifact** (machine-written by a characterization
+  session, immutable, never hand-edited): measured native primaries
+  and white point (CIE xy), black level and peak luminance (cd/m²,
+  absolute), per-channel response when measured, ambient floor,
+  instrument identity and firmware, processor-state snapshot, and
+  timestamps.
+
+**Why the split:** humans editing measured values only inject error,
+and machine-attestable device state (processor gamma, intensity,
+processing flags, panel/instrument identity) is readable from device
+APIs — transcription is an error source with no compensating value.
+The human act at the seam is *acceptance*: promoting a measurement run
+to the characterization of record by recording its hash — a signature,
+not an edit. Immutable measurement artifacts also give drift history
+for free: two sessions diff as two files.
 
 **Why end-to-end:** processor internals (scaling, calibration matrices,
 uniformity) are unobservable and vendor-specific. Measuring through the
@@ -219,16 +234,66 @@ be violated by LED walls in the tail (PWM chromaticity shift at low
 drive, near-black response). Only measurement through the deployed
 chain bounds the real error.
 
+## Artifact provenance §spec:provenance
+
+*Status: not started*
+
+Every artifact in the pipeline records the sha256 content hashes of
+its inputs, binding the chain as it is built:
+
+- The decisions file's promotion pointer is `{file, sha256}` of the
+  measurement artifact of record (§spec:characterization-model).
+- The generated config's metadata records both input hashes and the
+  generator version; generation refuses when the promotion hash does
+  not match the measurement artifact on disk.
+- Prediction files record the config's hash; verification reports
+  record the prediction and measurement hashes and the live processor
+  snapshot.
+
+Any config found on a show machine is therefore traceable to the
+exact measurements and decisions that produced it, and *checkable*:
+if the current files no longer hash to what the config records, the
+config is stale and demonstrably so.
+
+**Why hashes and not signatures:** the threat model is error and
+drift, not adversaries. sha256 over file bytes via the standard
+library — no keys, no PKI, no new dependencies. **Consequence:**
+generated artifacts are byte-deterministic (no embedded generation
+timestamps), which the determinism requirement
+(§req:success-criteria) already demands — hashing and reproducibility
+enforce each other.
+
 ## Closed-loop measurement §spec:measurement-loop
 
 *Status: not started*
 
 A measurement session is one command run with the wall powered and the
-instrument aimed: it audits processor state, drives probe patches
-through the deployed signal chain, reads the instrument, and emits the
-measurements file that the verification tooling (§spec:verification)
-judges. Sessions are re-runnable in minutes, making pre-show drift
-checks routine (§req:user-stories).
+instrument aimed. Sessions come in two modes over one shared core
+(contract audit, ambient gate, drive, settle, read, log):
+
+- **`characterize`** — drives a fixed, versioned, *device-referred*
+  patch protocol (full-drive R/G/B/W, black, shadow-dense per-channel
+  ramps, Y/C/M additivity triad, gray tracking ramp — raw code values,
+  no OCIO in the loop, since characterization precedes any config) and
+  emits the immutable measurements artifact
+  (§spec:characterization-model). The patch protocol is ours: defined
+  in MEASUREMENT.md, versioned with the tool.
+- **`verify`** — drives config-derived probe patches against the
+  generator's predictions and invokes the ΔE report
+  (§spec:verification). Sessions are re-runnable in minutes, making
+  pre-show drift checks routine (§req:user-stories).
+
+**Ownership split:** session tooling (both modes — everything that
+touches hardware) lives in a sibling repository with a
+surface-register name, depending on bmd-signal-gen, colour-specio,
+and the Tessera read-only client. This repository keeps everything
+that needs OCIO semantics and no hardware: generation, prediction,
+and the ΔE report. The seam at every stage is a file
+(§spec:provenance). **Why:** characterize and verify share the
+session machinery (splitting them would force duplication or a
+framework), while the generator stays hardware-free and fully
+testable without a photon. Session workstreams migrate to the
+sibling's governance at its creation.
 
 Session flow, each stage observable in the session log:
 
@@ -237,6 +302,10 @@ Session flow, each stage observable in the session log:
   contract (§spec:signal-contract); refuse to measure when they
   diverge. Per patch batch, read back the processor's input metadata
   and confirm the wire format matches the session's declared format.
+- **Provenance gate** (`verify` mode) — refuse to measure against a
+  config whose recorded input hashes do not match the files on disk
+  (§spec:provenance): a stale config would produce a report about a
+  characterization that no longer exists.
 - **Ambient gate** — the session opens and closes with a black-floor
   reading (wall showing black; reflected ambient plus panel leakage)
   and records it with the measurements. Characterization-grade

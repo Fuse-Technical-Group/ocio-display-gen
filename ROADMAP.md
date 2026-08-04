@@ -65,6 +65,29 @@ near-black (BT.1886-style) handling for gamma displays.
 within tolerance where an ideal-gamma config demonstrably does not,
 and that near-black output is finite-sloped.
 
+## Artifact provenance §road:artifact-provenance
+
+### Split decisions from measurements §road:split-decisions-measurements
+
+Split `display_config.yaml` into a human-authored decisions file and a
+machine-written measurements artifact consumed together by
+`OCIODisplayGen.py`, with the promotion pointer as `{file, sha256}`.
+§spec:characterization-model.
+
+### Hash-bind generated artifacts §road:hash-binding
+
+Record input hashes and generator version in generated config
+metadata; refuse generation on promotion-hash mismatch; preserve
+byte-determinism. §spec:provenance. Depends on
+§road:split-decisions-measurements.
+
+**Verify:** Generate from split files and confirm the config
+description carries both input hashes and the generator version.
+Tamper one byte of the measurements artifact and confirm generation
+refuses, naming the mismatch. Regenerate from untouched inputs and
+confirm byte-identical output. Hand-edit a measured value and confirm
+the promotion hash catches it.
+
 ## Verification harness §road:verification-harness
 
 ### Probe patches and predictions §road:probe-patches
@@ -97,6 +120,11 @@ shipped tooling.
 
 ## Closed-loop measurement §road:closed-loop-measurement
 
+Session workstreams in this section migrate to the sibling session
+tool's governance at its repo creation (§spec:measurement-loop
+ownership split); prediction and report tooling stay here. Repo
+creation decides the sibling's (surface-register) name.
+
 ### Processor state snapshot §road:processor-state-snapshot
 
 Add a CLI surface that snapshots a Brompton processor's state
@@ -116,15 +144,29 @@ emission of the measurements file consumed by the ΔE report.
 upstream in bmd-signal-gen (RGB 12-bit is validated today); unblocked
 per format as bmd-signal-gen's spec records validation.
 
+### Characterize mode §road:characterize-session
+
+Add the `characterize` session mode: fixed device-referred patch
+protocol driven raw (no OCIO), emitting the immutable measurements
+artifact with embedded processor snapshot, instrument identity, and
+ambient floor. §spec:measurement-loop,
+§spec:characterization-model. Depends on §road:session-orchestrator
+and §road:split-decisions-measurements.
+
 **Verify:** With a mock instrument driver that returns the session's
 own predictions: run the session command end-to-end and confirm it
 produces a measurements file and a passing ΔE report; perturb the
 recorded signal contract (e.g., wrong gamma in yaml vs. live
 processor) and confirm the session refuses to measure; declare a wire
 format the live input metadata contradicts (e.g., 8-bit negotiated)
-and confirm the session aborts with the mismatch named. With real
-hardware (wall + CR-300): complete a full session and confirm the
-report matches a manually measured spot-check patch.
+and confirm the session aborts with the mismatch named. Characterize
+mode with the virtual instrument: confirm the emitted measurements
+artifact carries measurements, processor snapshot, instrument
+identity, ambient floor, and timestamps, and that promoting it then
+generating a config succeeds end-to-end. With real hardware
+(wall + CR-300): complete a full characterize → promote → generate →
+verify cycle and confirm the report matches a manually measured
+spot-check patch.
 
 ## Documentation truth §road:documentation-truth
 
