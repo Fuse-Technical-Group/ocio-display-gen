@@ -312,9 +312,9 @@ def register_display(config: "OCIO.Config", colorspace: OCIO.ColorSpace) -> str:
     display_name = colorspace.getName()
     config.addDisplayView(display_name, COLORIMETRIC_VIEW, display_name)
 
-    active_displays = config.getActiveDisplays()
+    active_displays = [str(d) for d in config.getActiveDisplays()]
     if active_displays:
-        config.setActiveDisplays(f"{active_displays}, {display_name}")
+        config.setActiveDisplays(", ".join([*active_displays, display_name]))
 
     return display_name
 
