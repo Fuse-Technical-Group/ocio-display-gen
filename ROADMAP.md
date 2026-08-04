@@ -1,37 +1,5 @@
 # ocio-display-gen — Roadmap
 
-## Rendering views §road:rendering-views
-
-### VP Radiometric view §road:vp-radiometric-view
-
-Add the default VP Radiometric view — configurable nits anchor,
-ACES 2.0 gamut compressor at the boundary, selectable clamp/shoulder
-overflow policy — wired from `display_config.yaml` through
-`OCIODisplayGen.py`. §spec:view-transform. Depends on
-§road:colorimetric-view-surface.
-
-### ACES 2.0 base config selection §road:aces2-base-config
-
-Extend `display_config.yaml` base-config selection to the ACES 2.0 /
-OCIO 2.5 studio config URI scheme. §spec:version-targeting.
-
-### Parameterized output transform view §road:aces2-view-transform
-
-Add a view using the ACES 2.0 output transform parameterized by
-measured peak luminance and native primaries, for finished-content
-contexts. §spec:view-transform. Depends on
-§road:colorimetric-view-surface and §road:aces2-base-config.
-
-**Verify:** Generate the config and exercise both views. VP
-Radiometric: a neutral scene-linear ramp round-trips through
-view + simulated display EOTF at exponent 1.0; in-gamut sub-peak
-values pass through colorimetrically (matrix-only, within float
-tolerance); a hue sweep beyond the wall gamut compresses smoothly with
-no hue skew; above-peak values follow the selected clamp or shoulder
-policy. ACES 2.0 view: an exposure ramp rolls off rather than clips,
-and diffuse white (1.0) lands at the ACES-2.0-predicted level for the
-measured peak nits.
-
 ## Version tiers §road:version-tiers
 
 ### Target-runtime tier selection §road:tier-selection
