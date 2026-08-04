@@ -75,6 +75,11 @@ COLORIMETRIC_VIEW = "Colorimetric"
 # system gamma through a configurable nits anchor.
 VP_RADIOMETRIC_VIEW = "VP Radiometric"
 
+# The finished-content view (§spec:view-transform): the full ACES 2.0
+# output transform, limited to the wall's measured gamut and peak —
+# photographic by design, for IMAG and brand content, not VP plates.
+ACES2_VIEW = "ACES 2.0"
+
 # OCIO's display-reference luminance anchor: linear 1.0 = 100 cd/m².
 REFERENCE_LUMINANCE = 100.0
 
@@ -98,7 +103,7 @@ AP0_TO_XYZ_D65_BUILTIN = "UTILITY - ACES-AP0_to_CIE-XYZ-D65_BFD"
 
 # The ACES 2.0 _20 fixed functions require config profile >= 2.4; this
 # base config satisfies it (§spec:version-targeting).
-MIN_VP_RADIOMETRIC_PROFILE = (2, 4)
+MIN_ACES2_PROFILE = (2, 4)
 ACES2_BASE_CONFIG_URI = "ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5"
 
 # White point policies (§spec:white-point):
@@ -497,6 +502,91 @@ def create_vp_radiometric_view_transform(
     return vt
 
 
+def create_aces2_view_transform(
+    characterization: DisplayCharacterization,
+    chromatic_adaptation_transform: str = "CAT02",
+) -> OCIO.ViewTransform:
+    """
+    Build the ACES 2.0 view transform (§spec:view-transform).
+
+    Scene-referred: maps scene reference (ACES2065-1) to display
+    reference (CIE-XYZ-D65) through the full ACES 2.0 output transform
+    parameterized by the wall's measured peak luminance and native
+    primaries/white as the limiting gamut. For finished-content
+    contexts (IMAG, brand content): its tone scale and chroma
+    compression are photographic by design, radiometric nowhere.
+
+    Pipeline: ACES 2.0 output transform (ACES2065-1 → display-linear
+    RGB in the limiting primaries, 1.0 = 100 cd/m²), then the exact
+    inverse of the display colorspace's policy matrix back to
+    display-reference XYZ, so view + display colorspace compose
+    transparently (the encoding leg cancels; no luminance rescale —
+    the output transform's display-linear shares the display
+    reference's 1.0 = 100 cd/m² anchor). The parameterization is
+    recorded in the description (§spec:signal-contract).
+
+    Args:
+        characterization: Measured display data (peak, primaries,
+            white point) parameterizing the output transform's
+            limiting gamut and the drive-space matrix
+        chromatic_adaptation_transform: CAT for the drive-space matrix
+            (adapted white point policy only)
+
+    Raises:
+        ValueError: For a missing measured white point.
+    """
+    white_point = characterization.white_point
+    if white_point is None:
+        raise ValueError("Characterization has no measured white point")
+
+    peak = characterization.peak_luminance
+    red = characterization.primaries["red"]
+    green = characterization.primaries["green"]
+    blue = characterization.primaries["blue"]
+
+    vt = OCIO.ViewTransform(OCIO.REFERENCE_SPACE_SCENE)
+    vt.setName(ACES2_VIEW)
+    vt.setDescription(
+        f"ACES 2.0 output transform for {characterization.name}: "
+        f"full tone scale and chroma compression for finished content "
+        f"(IMAG, brand content), limited to the wall's measured gamut "
+        f"and peak. Parameterization: peak {peak} cd/m², limiting "
+        f"gamut R({red[0]:.4f}, {red[1]:.4f}) "
+        f"G({green[0]:.4f}, {green[1]:.4f}) "
+        f"B({blue[0]:.4f}, {blue[1]:.4f}) "
+        f"W({white_point[0]:.4f}, {white_point[1]:.4f})."
+    )
+
+    group = OCIO.GroupTransform()
+
+    # Stage 1: ACES 2.0 output transform, limited to the wall's
+    # measured gamut and peak. Output is display-linear RGB in the
+    # limiting primaries, 1.0 = 100 cd/m².
+    output_transform = OCIO.FixedFunctionTransform(
+        OCIO.FIXED_FUNCTION_ACES_OUTPUT_TRANSFORM_20,
+        params=[peak, *red, *green, *blue, *white_point],
+    )
+    group.appendTransform(output_transform)
+
+    # Stage 2: wall display-linear RGB → display reference XYZ via the
+    # exact inverse of the display colorspace's policy matrix, so the
+    # encoding leg cancels exactly (same technique as the VP view's
+    # drive-space sandwich, without the 100/peak factor: the output
+    # transform's display-linear already shares the display
+    # reference's 1.0 = 100 cd/m² anchor).
+    native_to_xyz = np.linalg.inv(
+        create_display_xyz_to_native_matrix(
+            characterization, chromatic_adaptation_transform
+        )
+    )
+    from_native = OCIO.MatrixTransform()
+    from_native.setMatrix(native_to_xyz.flatten().tolist())
+    group.appendTransform(from_native)
+
+    vt.setTransform(group, OCIO.VIEWTRANSFORM_DIR_FROM_REFERENCE)
+    return vt
+
+
 def register_display(
     config: "OCIO.Config",
     colorspace: OCIO.ColorSpace,
@@ -508,14 +598,15 @@ def register_display(
     """
     Register the wall as a named OCIO display with its views.
 
-    Adds the colorspace and the VP Radiometric view transform to the
-    config and registers a display named after the colorspace (studio
-    config convention: display name == display colorspace name) with
-    "VP Radiometric" first — the OCIO default view — and the
-    "Colorimetric" view (bare colorspace) second. The display is
-    appended to the config's active-display list without clobbering the
-    base config's existing entries. An empty active list means "all
-    active" in OCIO, so it is left empty.
+    Adds the colorspace and the VP Radiometric and ACES 2.0 view
+    transforms to the config and registers a display named after the
+    colorspace (studio config convention: display name == display
+    colorspace name) with "VP Radiometric" first — the OCIO default
+    view — then "ACES 2.0" (finished-content rendering), then the
+    "Colorimetric" view (bare colorspace). The display is appended to
+    the config's active-display list without clobbering the base
+    config's existing entries. An empty active list means "all active"
+    in OCIO, so it is left empty.
 
     Args:
         config: Base OCIO config to extend
@@ -536,24 +627,28 @@ def register_display(
             policies.
     """
     version = (config.getMajorVersion(), config.getMinorVersion())
-    if version < MIN_VP_RADIOMETRIC_PROFILE:
+    if version < MIN_ACES2_PROFILE:
         raise ValueError(
             f"Base config profile version {version[0]}.{version[1]} cannot "
-            f"hold the ACES 2.0 fixed functions the VP Radiometric view "
-            f"uses (requires >= "
-            f"{MIN_VP_RADIOMETRIC_PROFILE[0]}.{MIN_VP_RADIOMETRIC_PROFILE[1]}); "
+            f"hold the ACES 2.0 fixed functions the VP Radiometric and "
+            f"ACES 2.0 views use (requires >= "
+            f"{MIN_ACES2_PROFILE[0]}.{MIN_ACES2_PROFILE[1]}); "
             f"select the ACES 2.0 / OCIO 2.5 studio base config "
             f"({ACES2_BASE_CONFIG_URI})"
         )
 
-    view_transform = create_vp_radiometric_view_transform(
+    vp_view_transform = create_vp_radiometric_view_transform(
         characterization,
         nits_anchor,
         overflow_policy,
         chromatic_adaptation_transform,
     )
+    aces2_view_transform = create_aces2_view_transform(
+        characterization, chromatic_adaptation_transform
+    )
     config.addColorSpace(colorspace)
-    config.addViewTransform(view_transform)
+    config.addViewTransform(vp_view_transform)
+    config.addViewTransform(aces2_view_transform)
     display_name = colorspace.getName()
     # First view added is the display's default. Keyword arguments are
     # required: positional binds the colorspace-only overload.
@@ -561,6 +656,12 @@ def register_display(
         display=display_name,
         view=VP_RADIOMETRIC_VIEW,
         viewTransform=VP_RADIOMETRIC_VIEW,
+        displayColorSpaceName=display_name,
+    )
+    config.addDisplayView(
+        display=display_name,
+        view=ACES2_VIEW,
+        viewTransform=ACES2_VIEW,
         displayColorSpaceName=display_name,
     )
     config.addDisplayView(display_name, COLORIMETRIC_VIEW, display_name)
@@ -1039,6 +1140,11 @@ def main():
         print(
             f"   {VP_RADIOMETRIC_VIEW}: anchor {nits_anchor} cd/m², "
             f"overflow policy {overflow_policy}"
+        )
+        print(
+            f"   {ACES2_VIEW}: output transform limited to measured "
+            f"peak {characterization.peak_luminance} cd/m² and "
+            f"measured primaries/white"
         )
         print("\n📋 Usage Instructions:")
         print(
