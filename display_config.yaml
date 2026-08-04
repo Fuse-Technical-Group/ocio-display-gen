@@ -14,7 +14,7 @@ display:
 
   led_panel:
     manufacturer: "ROE"              # LED panel manufacturer
-    model: "Black Pearl 2v2"         # LED panel model
+    model: "Black Pearl 2 (NS)"      # LED panel model
     version: "2018"                  # Year, batch, or explicit version number
     last_calibrated: "2024-01-15"    # Last calibration date (ISO format: YYYY-MM-DD)
     
@@ -36,7 +36,7 @@ display:
   
   led_processor:
     manufacturer: "Brompton"         # LED processor manufacturer
-    model: "SX40"                    # LED processor model
+    model: "S8"                      # LED processor model
     version: "3.5.2"                 # Firmware or software version
     configuration:
       # DISPLAY EOTF SPECIFICATION (Electro-Optical Transfer Function)
