@@ -13,7 +13,7 @@ requires-python = ">=3.11"
 dependencies = [
     "colour-science>=0.4.6",
     "matplotlib>=3.10.3",
-    "opencolorio>=2.4.2",
+    "opencolorio>=2.5.1",
     "pyyaml>=6.0",
 ]
 
