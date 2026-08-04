@@ -17,6 +17,10 @@ measured characterization of a specific wall, so the renderer transforms
 scene-linear imagery to the wall's native response and the processor is
 reduced to a fixed, known decode step.
 
+Throughout these documents, "wall" is industry shorthand for any LED
+surface — walls, ceilings, floors, domes, and other geometries. Nothing
+in the system is orientation- or geometry-specific.
+
 ## Characterization model §spec:characterization-model
 
 *Status: in progress*
@@ -215,11 +219,84 @@ be violated by LED walls in the tail (PWM chromaticity shift at low
 drive, near-black response). Only measurement through the deployed
 chain bounds the real error.
 
+## Closed-loop measurement §spec:measurement-loop
+
+*Status: not started*
+
+A measurement session is one command run with the wall powered and the
+instrument aimed: it audits processor state, drives probe patches
+through the deployed signal chain, reads the instrument, and emits the
+measurements file that the verification tooling (§spec:verification)
+judges. Sessions are re-runnable in minutes, making pre-show drift
+checks routine (§req:user-stories).
+
+Session flow, each stage observable in the session log:
+
+- **Contract audit** — snapshot the processor's state read-only
+  (Tessera HTTP API for Brompton) and diff against the recorded signal
+  contract (§spec:signal-contract); refuse to measure when they
+  diverge. Per patch batch, read back the processor's input metadata
+  and confirm the wire format matches the session's declared format.
+- **Ambient gate** — the session opens and closes with a black-floor
+  reading (wall showing black; reflected ambient plus panel leakage)
+  and records it with the measurements. Characterization-grade
+  sessions refuse when the floor exceeds the budget implied by the
+  dark-patch ΔE tolerance; drift checks instead compare the live
+  floor against the one recorded at characterization, so ambient
+  changes cannot alias into apparent drift. Ambient is recorded and
+  gated, never compensated: a display cannot emit negative light to
+  cancel reflection, and baking a venue's ambient into the
+  characterization poisons the config everywhere else.
+- **Patch drive** — display patches via bmd-signal-gen on a DeckLink
+  device, using its live color-update surface; probe patch sets
+  (§spec:verification) are emitted in a format bmd-signal-gen consumes
+  directly. The session explicitly declares pixel format and EOTF
+  signaling — bmd-signal-gen defaults to PQ InfoFrames, which would
+  fault an SDR-contract wall (§req:constraints), so SDR walls are
+  driven with explicit SDR signaling.
+- **Instrument read** — settle delay, then a triggered single
+  measurement returning XYZ via colour-specio (Colorimetry Research
+  family: CR-300 for characterization-grade sessions, CR-120 for
+  drift checks — §req:constraints). colour-specio's virtual
+  instruments back hardware-free session tests.
+- **Report** — the session ends by producing the measurements file and
+  invoking the ΔE report; pass/fail per §spec:verification thresholds.
+
+**Why patches ride the show chain, not the processor's generator:**
+the internal generator injects downstream of input decode, bypassing
+HDMI/SDI receive, YCbCr conversion, range handling, and bit-depth
+truncation — it characterizes a system the show signal never
+traverses, violating the end-to-end black box
+(§spec:characterization-model). Its only role is manual
+troubleshooting, documented in the measurement guide.
+
+**Why the processor is read-only:** auditability. The tool observes
+and refuses; it never mutates show hardware, so a session can run
+against a live rig without risk.
+
+**Why no iteration:** measure-fit-remeasure convergence loops are a
+control-systems project, not glue. A session characterizes or
+verifies once and reports; escalation (fitted 1D LUTs,
+§spec:characterization-model) is a human decision consuming the same
+measurements file.
+
+External systems are referenced, not re-specified: bmd-signal-gen owns
+patch rendering and wire-format correctness (its spec documents the
+validated formats; sessions shall refuse formats not yet validated
+there), pydecklink owns device access, and colour-specio owns
+instrument communication (consumed at a pinned version — a git SHA
+until upstream's current API ships to PyPI — not forked; its
+`measure()` surface is the driver contract, and upstream is the venue
+for fixes: bench-confirmed asks are a fresh PyPI release and a missing
+scipy dependency declaration).
+
 ## Scope boundaries §spec:non-goals
 
 *Status: complete*
 
 Out of scope: processor-internal correction, per-panel uniformity,
 temporal/PWM artifacts, camera-side ICVFX calibration (moiré, in-camera
-metamerism — see OpenVPCal for that problem), and multi-wall config
-merging (OCIO 2.5 config-merge is preview-status; revisit when stable).
+metamerism — see OpenVPCal for that problem), multi-wall config
+merging (OCIO 2.5 config-merge is preview-status; revisit when stable),
+and generalized instrument/playout abstraction frameworks — drivers
+stay pinned to the hardware in hand (§spec:measurement-loop).

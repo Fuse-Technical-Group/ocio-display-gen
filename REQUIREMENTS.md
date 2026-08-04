@@ -84,6 +84,11 @@ and corrected.
 - As a lead who distrusts a processor's color math, I move that math
   into the OCIO config so I can read, verify, and fix it — the
   processor is reduced to a dumb, measurable decode.
+- As a lead with the wall powered and the probe aimed, I run one
+  command and get a pass/fail characterization or verification report
+  — no manual patch stepping, no measurement transcription. Re-running
+  before a show takes minutes, so drift is caught before an audience
+  sees it.
 
 ## Quality attributes §req:quality-attributes
 
@@ -112,6 +117,24 @@ and corrected.
 - Support is processor-agnostic in principle (Brompton, Novastar,
   others): the tool depends only on a measurable, stable decode state,
   not on any vendor feature beyond it.
+- Measurement patches are driven through the deployed signal path
+  (DeckLink playout via bmd-signal-gen). The processor's internal test
+  pattern generator is not used for measurements: it injects downstream
+  of input decode, so its patches characterize a different system than
+  the show signal traverses. The processor is observed read-only
+  (state snapshot, input metadata) — the tool never mutates show
+  hardware.
+- Measurement sessions require a wire format validated end-to-end
+  (bit depth, RGB/YCbCr, quantization range, HDR InfoFrame state).
+  RGB 12-bit is validated in bmd-signal-gen today; SDI and 10-bit
+  YCbCr validation is in progress there. An unvalidated link bakes its
+  own quantization into the "measured" response.
+- Instrument support is pinned to the Colorimetry Research family
+  (CR-300 spectroradiometer and CR-120 colorimeter on hand) via the
+  colour-specio library — no generalized instrument framework.
+  Characterization-grade measurements require the spectroradiometer:
+  colorimeter filter/observer mismatch is largest on narrow-band LED
+  primaries. The colorimeter serves development and drift checks.
 - The generated config is valid only while the processor stays in its
   recorded state (EOTF, intensity, processing disabled).
 - Radiometric claims require an explicit absolute anchor: the config
@@ -132,6 +155,10 @@ and corrected.
 4. **Should:** ACES 2.0 photographic view for finished-content
    contexts.
 5. **Should:** version tiers for older runtimes.
-6. **Nice:** measured per-channel EOTF (1D LUT) refinement; hosted
+6. **Should:** closed-loop measurement sessions (automated patch
+   drive + instrument read + report) once the verification harness
+   exists — automation deletes the largest real error source
+   (hundreds of manual patch/measurement transcriptions).
+7. **Nice:** measured per-channel EOTF (1D LUT) refinement; hosted
    docs; support for non-Disguise runtimes beyond config-level
    compatibility.
