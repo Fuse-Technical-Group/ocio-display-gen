@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """Tests for the display-referred wall colorspace builder."""
 
-import copy
 from pathlib import Path
 
 import colour
 import numpy as np
 import PyOpenColorIO as OCIO
 import pytest
-import yaml  # type: ignore[import]
 
 from conftest import (
     GAMMA,
@@ -26,6 +24,7 @@ from OCIODisplayGen import (
     create_characterization_from_config,
     create_display_colorspace_from_characterization,
     create_display_xyz_to_native_matrix,
+    load_config_from_yaml,
     validate_config_data,
 )
 
@@ -108,32 +107,6 @@ def test_hlg_raises_not_implemented() -> None:
         create_display_colorspace_from_characterization(make_characterization("HLG"))
 
 
-def test_non_d65_wall_white_uses_cat02() -> None:
-    wall_white = (0.3050, 0.3200)
-    cs = create_display_colorspace_from_characterization(
-        make_characterization("GAMMA", white_point=wall_white)
-    )
-    group = cs.getTransform(OCIO.COLORSPACE_DIR_FROM_REFERENCE)
-    matrix_transform = group[0]
-    assert isinstance(matrix_transform, OCIO.MatrixTransform)
-    emitted = np.array(matrix_transform.getMatrix()).reshape(4, 4)
-
-    wall_cs = colour.RGB_Colourspace(
-        "Wall", WALL_PRIMARIES, np.array(wall_white), "Wall White"
-    )
-    wall_cs.use_derived_transformation_matrices()
-    cat = colour.adaptation.matrix_chromatic_adaptation_VonKries(
-        colour.xy_to_XYZ(np.array(D65_WHITE_XY)),
-        colour.xy_to_XYZ(np.array(wall_white)),
-        transform="CAT02",
-    )
-    expected = wall_cs.matrix_XYZ_to_RGB @ cat
-
-    assert np.allclose(emitted[:3, :3], expected, atol=1e-6)
-    assert np.allclose(emitted[3], [0.0, 0.0, 0.0, 1.0])
-    assert np.allclose(emitted[:3, 3], [0.0, 0.0, 0.0])
-
-
 # White point policy (§spec:white-point). The sample wall white IS D65,
 # where adapted and absolute coincide, so these use a non-D65 wall white.
 NON_D65_WALL_WHITE = (0.3050, 0.3200)
@@ -147,10 +120,32 @@ def non_d65_wall_space() -> colour.RGB_Colourspace:
     return wall_cs
 
 
+def test_non_d65_wall_white_uses_cat02() -> None:
+    cs = create_display_colorspace_from_characterization(
+        make_characterization("GAMMA", white_point=NON_D65_WALL_WHITE)
+    )
+    group = cs.getTransform(OCIO.COLORSPACE_DIR_FROM_REFERENCE)
+    matrix_transform = group[0]
+    assert isinstance(matrix_transform, OCIO.MatrixTransform)
+    emitted = np.array(matrix_transform.getMatrix()).reshape(4, 4)
+
+    cat = colour.adaptation.matrix_chromatic_adaptation_VonKries(
+        colour.xy_to_XYZ(np.array(D65_WHITE_XY)),
+        colour.xy_to_XYZ(np.array(NON_D65_WALL_WHITE)),
+        transform="CAT02",
+    )
+    expected = non_d65_wall_space().matrix_XYZ_to_RGB @ cat
+
+    assert np.allclose(emitted[:3, :3], expected, atol=1e-6)
+    assert np.allclose(emitted[3], [0.0, 0.0, 0.0, 1.0])
+    assert np.allclose(emitted[:3, 3], [0.0, 0.0, 0.0])
+
+
 def test_absolute_policy_matrix_has_no_cat() -> None:
     matrix = create_display_xyz_to_native_matrix(
-        make_characterization("GAMMA", white_point=NON_D65_WALL_WHITE),
-        white_point_policy="absolute",
+        make_characterization(
+            "GAMMA", white_point=NON_D65_WALL_WHITE, white_point_policy="absolute"
+        )
     )
     expected = non_d65_wall_space().matrix_XYZ_to_RGB
     assert np.allclose(matrix[:3, :3], expected, atol=1e-6)
@@ -158,8 +153,9 @@ def test_absolute_policy_matrix_has_no_cat() -> None:
 
 def test_absolute_policy_reproduces_d65_chromaticity() -> None:
     matrix = create_display_xyz_to_native_matrix(
-        make_characterization("GAMMA", white_point=NON_D65_WALL_WHITE),
-        white_point_policy="absolute",
+        make_characterization(
+            "GAMMA", white_point=NON_D65_WALL_WHITE, white_point_policy="absolute"
+        )
     )
     rgb = matrix[:3, :3] @ colour.xy_to_XYZ(np.array(D65_WHITE_XY))
     # No adaptation: D65 white lands off the wall's neutral axis.
@@ -173,7 +169,7 @@ def test_absolute_policy_reproduces_d65_chromaticity() -> None:
 def test_invalid_white_point_policy_raises() -> None:
     with pytest.raises(ValueError, match="adapted"):
         create_display_xyz_to_native_matrix(
-            make_characterization(), white_point_policy="perceptual"
+            make_characterization(white_point_policy="perceptual")
         )
 
 
@@ -184,7 +180,7 @@ def test_description_records_adapted_policy() -> None:
 
 def test_description_records_absolute_policy() -> None:
     cs = create_display_colorspace_from_characterization(
-        make_characterization(), white_point_policy="absolute"
+        make_characterization(white_point_policy="absolute")
     )
     assert "White point policy: absolute (no chromatic adaptation)" in (
         cs.getDescription()
@@ -192,19 +188,19 @@ def test_description_records_absolute_policy() -> None:
 
 
 def sample_yaml_config() -> dict:
-    with open(Path(__file__).parent / "display_config.yaml", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    """Fresh parse of the sample yaml — each call returns a new object."""
+    return load_config_from_yaml(str(Path(__file__).parent / "display_config.yaml"))
 
 
 def test_yaml_white_point_policy_parsed() -> None:
-    config = copy.deepcopy(sample_yaml_config())
+    config = sample_yaml_config()
     config["ocio"]["white_point_policy"] = "absolute"
     char = create_characterization_from_config(config)
     assert char.white_point_policy == "absolute"
 
 
 def test_yaml_white_point_policy_defaults_to_adapted() -> None:
-    config = copy.deepcopy(sample_yaml_config())
+    config = sample_yaml_config()
     config["ocio"].pop("white_point_policy", None)
     char = create_characterization_from_config(config)
     assert char.white_point_policy == "adapted"
@@ -240,7 +236,7 @@ def test_description_records_processing_not_disabled() -> None:
     cs = create_display_colorspace_from_characterization(
         make_characterization(intensity="100%", processing_disabled=False)
     )
-    assert "color processing NOT disabled" in cs.getDescription()
+    assert "color processing and dynamic features NOT disabled" in cs.getDescription()
 
 
 def test_description_omits_intensity_when_absent() -> None:
@@ -253,15 +249,13 @@ def test_description_omits_intensity_when_absent() -> None:
 
 
 def test_yaml_processor_state_parsed() -> None:
-    char = create_characterization_from_config(
-        copy.deepcopy(sample_yaml_config())
-    )
+    char = create_characterization_from_config(sample_yaml_config())
     assert char.processor_intensity == "100%"
     assert char.processor_processing_disabled is True
 
 
 def test_yaml_processor_state_absent_is_none() -> None:
-    config = copy.deepcopy(sample_yaml_config())
+    config = sample_yaml_config()
     processor_conf = config["display"]["led_processor"]["configuration"]
     processor_conf.pop("intensity", None)
     processor_conf.pop("processing_disabled", None)
@@ -275,7 +269,7 @@ def test_yaml_processor_state_absent_is_none() -> None:
 
 
 def config_without_processor_state(strict_mode: bool) -> dict:
-    config = copy.deepcopy(sample_yaml_config())
+    config = sample_yaml_config()
     config["validation"]["strict_mode"] = strict_mode
     processor_conf = config["display"]["led_processor"]["configuration"]
     processor_conf.pop("intensity", None)
