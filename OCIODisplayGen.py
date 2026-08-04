@@ -51,6 +51,13 @@ COLORIMETRIC_VIEW = "Colorimetric"
 # OCIO's display-reference luminance anchor: linear 1.0 = 100 cd/m².
 REFERENCE_LUMINANCE = 100.0
 
+# White point policies (§spec:white-point):
+# "adapted": chromatic adaptation maps content white (D65) to the wall's
+# native white — preserves full brightness. "absolute": no adaptation —
+# colorimetrically exact within gamut, at the cost of peak brightness and
+# possible single-channel clipping when wall white differs from D65.
+WHITE_POINT_POLICIES = ("adapted", "absolute")
+
 
 class DisplayCharacterization:
     """Class to hold display characterization data"""
@@ -69,6 +76,7 @@ class DisplayCharacterization:
         self.eotf_type = "PQ"  # Display EOTF type: "PQ", "HLG", "GAMMA"
         self.gamma_value = 2.4  # For gamma-based EOTF (display property)
         self.measured_response: Optional[str] = None  # Custom measured response curve
+        self.white_point_policy = "adapted"  # "adapted" or "absolute"
         self.viewing_conditions: Dict[
             str, object
         ] = {}  # Ambient light, viewing angle, etc.
@@ -77,22 +85,36 @@ class DisplayCharacterization:
 def create_display_xyz_to_native_matrix(
     characterization: DisplayCharacterization,
     chromatic_adaptation_transform: str = "CAT02",
+    white_point_policy: str = "adapted",
 ) -> npt.NDArray[np.float64]:
     """
     Build the 4x4 matrix from display-reference CIE XYZ (D65-adapted) to
     the wall's native RGB.
 
-    Composes a Von Kries chromatic adaptation (display-reference D65 →
-    measured wall white) with the wall's derived XYZ→RGB matrix, so
-    native RGB (1, 1, 1) is the wall's measured white.
+    Policy "adapted": composes a Von Kries chromatic adaptation
+    (display-reference D65 → measured wall white) with the wall's derived
+    XYZ→RGB matrix, so native RGB (1, 1, 1) is the wall's measured white.
+    Policy "absolute": the derived XYZ→RGB matrix alone — no adaptation,
+    chromaticity is exact within gamut.
 
     Args:
         characterization: Measured display data (primaries, white point)
         chromatic_adaptation_transform: CAT name accepted by colour-science
+            (adapted policy only)
+        white_point_policy: "adapted" or "absolute" (§spec:white-point)
 
     Returns:
         4x4 matrix for an OCIO MatrixTransform (row-major)
+
+    Raises:
+        ValueError: For unknown white point policies.
     """
+    if white_point_policy not in WHITE_POINT_POLICIES:
+        raise ValueError(
+            f"Unknown white point policy '{white_point_policy}'; "
+            f"valid values: {', '.join(WHITE_POINT_POLICIES)}"
+        )
+
     primaries = np.array(
         [
             characterization.primaries["red"],
@@ -108,39 +130,46 @@ def create_display_xyz_to_native_matrix(
     )
     wall_space.use_derived_transformation_matrices()
 
-    cat_matrix = colour.adaptation.matrix_chromatic_adaptation_VonKries(
-        colour.xy_to_XYZ(np.array(D65_WHITE_XY)),
-        colour.xy_to_XYZ(white_xy),
-        transform=chromatic_adaptation_transform,
-    )
+    matrix_3x3 = wall_space.matrix_XYZ_to_RGB
+    if white_point_policy == "adapted":
+        cat_matrix = colour.adaptation.matrix_chromatic_adaptation_VonKries(
+            colour.xy_to_XYZ(np.array(D65_WHITE_XY)),
+            colour.xy_to_XYZ(white_xy),
+            transform=chromatic_adaptation_transform,
+        )
+        matrix_3x3 = matrix_3x3 @ cat_matrix
 
     matrix_4x4 = np.identity(4)
-    matrix_4x4[:3, :3] = wall_space.matrix_XYZ_to_RGB @ cat_matrix
+    matrix_4x4[:3, :3] = matrix_3x3
     return matrix_4x4
 
 
 def create_display_colorspace_from_characterization(
     characterization: DisplayCharacterization,
     chromatic_adaptation_transform: str = "CAT02",
+    white_point_policy: str = "adapted",
 ) -> OCIO.ColorSpace:
     """
     Create the wall's OCIO display colorspace from measured data.
 
     The colorspace is display-referred: its from_display_reference
     transform maps CIE XYZ (D65-adapted, 1.0 = 100 cd/m²) to the wall's
-    encoded native RGB. Pipeline: XYZ→native matrix (with chromatic
-    adaptation), absolute luminance scale, hard clip, inverse processor
+    encoded native RGB. Pipeline: XYZ→native matrix (white point policy
+    applied), absolute luminance scale, hard clip, inverse processor
     EOTF. It holds only measured colorimetry — exact within gamut,
-    hard-clipped outside.
+    hard-clipped outside. The chosen policy is recorded in the
+    colorspace description.
 
     Args:
         characterization: Measured display data
-        chromatic_adaptation_transform: CAT for D65 → wall white adaptation
+        chromatic_adaptation_transform: CAT for D65 → wall white
+            adaptation (adapted policy only)
+        white_point_policy: "adapted" or "absolute" (§spec:white-point)
 
     Raises:
         NotImplementedError: For HLG (an inverse EOTF without OOTF
             handling would be silently wrong).
-        ValueError: For unknown EOTF types.
+        ValueError: For unknown EOTF types or white point policies.
     """
     eotf_type = characterization.eotf_type
     if eotf_type == "HLG":
@@ -154,6 +183,13 @@ def create_display_colorspace_from_characterization(
 
     peak = characterization.peak_luminance
 
+    if white_point_policy == "absolute":
+        policy_note = "absolute (no chromatic adaptation)"
+    else:
+        policy_note = (
+            f"adapted ({chromatic_adaptation_transform}, D65 → wall white)"
+        )
+
     cs = OCIO.ColorSpace(OCIO.REFERENCE_SPACE_DISPLAY)
     display_name = f"{characterization.name} - Display"
     cs.setName(display_name)
@@ -166,7 +202,8 @@ def create_display_colorspace_from_characterization(
         f"Black: {characterization.black_level} cd/m², "
         f"EOTF: {eotf_type}) "
         f"CIE-XYZ-D65 → native RGB matrix → luminance scale → "
-        f"hard clip → inverse {eotf_type} EOTF"
+        f"hard clip → inverse {eotf_type} EOTF. "
+        f"White point policy: {policy_note}"
     )
     cs.setBitDepth(OCIO.BIT_DEPTH_F32)
     cs.addCategory("file-io")
@@ -174,10 +211,12 @@ def create_display_colorspace_from_characterization(
 
     group = OCIO.GroupTransform()
 
-    # Stage 1: XYZ (D65-adapted) → native RGB, with chromatic adaptation.
-    # After this, native (1,1,1) = wall white at 100 cd/m² (Y = 1.0).
+    # Stage 1: XYZ (D65-adapted) → native RGB, per white point policy.
+    # Adapted: native (1,1,1) = wall white at 100 cd/m² (Y = 1.0).
+    # Absolute: no adaptation; D65 content white lands off the wall's
+    # neutral axis and may single-channel clip at stage 3.
     matrix_4x4 = create_display_xyz_to_native_matrix(
-        characterization, chromatic_adaptation_transform
+        characterization, chromatic_adaptation_transform, white_point_policy
     )
     matrix_transform = OCIO.MatrixTransform()
     matrix_transform.setMatrix(matrix_4x4.flatten().tolist())
@@ -322,6 +361,12 @@ def create_characterization_from_config(
     eotf_config = led_processor_config["configuration"]["eotf"]
     char.eotf_type = eotf_config["type"]
     char.gamma_value = eotf_config.get("gamma_value", 2.4)
+
+    # White point policy is a generation decision, not a measurement, so
+    # it lives under ocio:. Validated at matrix-build time.
+    char.white_point_policy = config.get("ocio", {}).get(
+        "white_point_policy", "adapted"
+    )
 
     # Combine viewing conditions, metrology, and processor configuration data
     char.viewing_conditions = config.get("viewing_conditions", {}).copy()
@@ -651,6 +696,7 @@ def main():
     print(f"Black level: {characterization.black_level} cd/m²")
     print(f"Contrast ratio: {characterization.contrast_ratio:.0f}:1")
     print(f"EOTF: {characterization.eotf_type}")
+    print(f"White point policy: {characterization.white_point_policy}")
     output_config_path = generate_output_filename(config, characterization)
     try:
         print("\nCreating base OCIO config...")
@@ -663,7 +709,10 @@ def main():
                 f"Base config display reference is '{display_reference}', "
                 f"but the emitted XYZ→native matrix assumes {DISPLAY_REFERENCE}"
             )
-        cs = create_display_colorspace_from_characterization(characterization)
+        cs = create_display_colorspace_from_characterization(
+            characterization,
+            white_point_policy=characterization.white_point_policy,
+        )
         display_name = register_display(ocio_config_obj, cs)
         try:
             ocio_config_obj.validate()

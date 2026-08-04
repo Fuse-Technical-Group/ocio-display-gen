@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Tests for the display-referred wall colorspace builder."""
 
+import copy
+from pathlib import Path
+
 import colour
 import numpy as np
 import PyOpenColorIO as OCIO
 import pytest
+import yaml  # type: ignore[import]
 
 from conftest import (
     GAMMA,
@@ -19,7 +23,9 @@ from OCIODisplayGen import (
     D65_WHITE_XY,
     DISPLAY_REFERENCE,
     DisplayCharacterization,
+    create_characterization_from_config,
     create_display_colorspace_from_characterization,
+    create_display_xyz_to_native_matrix,
 )
 
 # PQ code values (SMPTE ST 2084), absolute nits
@@ -125,3 +131,79 @@ def test_non_d65_wall_white_uses_cat02() -> None:
     assert np.allclose(emitted[:3, :3], expected, atol=1e-6)
     assert np.allclose(emitted[3], [0.0, 0.0, 0.0, 1.0])
     assert np.allclose(emitted[:3, 3], [0.0, 0.0, 0.0])
+
+
+# White point policy (§spec:white-point). The sample wall white IS D65,
+# where adapted and absolute coincide, so these use a non-D65 wall white.
+NON_D65_WALL_WHITE = (0.3050, 0.3200)
+
+
+def non_d65_wall_space() -> colour.RGB_Colourspace:
+    wall_cs = colour.RGB_Colourspace(
+        "Wall", WALL_PRIMARIES, np.array(NON_D65_WALL_WHITE), "Wall White"
+    )
+    wall_cs.use_derived_transformation_matrices()
+    return wall_cs
+
+
+def test_absolute_policy_matrix_has_no_cat() -> None:
+    matrix = create_display_xyz_to_native_matrix(
+        make_characterization("GAMMA", white_point=NON_D65_WALL_WHITE),
+        white_point_policy="absolute",
+    )
+    expected = non_d65_wall_space().matrix_XYZ_to_RGB
+    assert np.allclose(matrix[:3, :3], expected, atol=1e-6)
+
+
+def test_absolute_policy_reproduces_d65_chromaticity() -> None:
+    matrix = create_display_xyz_to_native_matrix(
+        make_characterization("GAMMA", white_point=NON_D65_WALL_WHITE),
+        white_point_policy="absolute",
+    )
+    rgb = matrix[:3, :3] @ colour.xy_to_XYZ(np.array(D65_WHITE_XY))
+    # No adaptation: D65 white lands off the wall's neutral axis.
+    assert not np.allclose(rgb, [rgb[0]] * 3, atol=1e-4)
+    # Colorimetrically exact: back through the wall's RGB→XYZ, the
+    # chromaticity is still D65.
+    xy = colour.XYZ_to_xy(non_d65_wall_space().matrix_RGB_to_XYZ @ rgb)
+    assert np.allclose(xy, D65_WHITE_XY, atol=1e-6)
+
+
+def test_invalid_white_point_policy_raises() -> None:
+    with pytest.raises(ValueError, match="adapted"):
+        create_display_xyz_to_native_matrix(
+            make_characterization(), white_point_policy="perceptual"
+        )
+
+
+def test_description_records_adapted_policy() -> None:
+    cs = create_display_colorspace_from_characterization(make_characterization())
+    assert "White point policy: adapted" in cs.getDescription()
+
+
+def test_description_records_absolute_policy() -> None:
+    cs = create_display_colorspace_from_characterization(
+        make_characterization(), white_point_policy="absolute"
+    )
+    assert "White point policy: absolute (no chromatic adaptation)" in (
+        cs.getDescription()
+    )
+
+
+def sample_yaml_config() -> dict:
+    with open(Path(__file__).parent / "display_config.yaml", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def test_yaml_white_point_policy_parsed() -> None:
+    config = copy.deepcopy(sample_yaml_config())
+    config["ocio"]["white_point_policy"] = "absolute"
+    char = create_characterization_from_config(config)
+    assert char.white_point_policy == "absolute"
+
+
+def test_yaml_white_point_policy_defaults_to_adapted() -> None:
+    config = copy.deepcopy(sample_yaml_config())
+    config["ocio"].pop("white_point_policy", None)
+    char = create_characterization_from_config(config)
+    assert char.white_point_policy == "adapted"

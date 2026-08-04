@@ -69,5 +69,10 @@ ocio:
     config_version: "v2.1.0"    # config version (e.g., v2.1.0, v2.0.0)
     aces_version: "v1.3"        # ACES version (e.g., v1.3, v1.2)
     ocio_version: "v2.3"        # OCIO version (e.g., v2.3, v2.2)
+  # White point policy: how content white (D65) maps to the wall's native white.
+  #   "adapted" (default): chromatic adaptation to wall white — full brightness
+  #   "absolute": no adaptation — exact chromaticity, costs peak brightness
+  #               and may single-channel clip when wall white differs from D65
+  white_point_policy: "adapted"
   output_config: "custom_display_config.ocio"  # Will be auto-generated if not specified
 
