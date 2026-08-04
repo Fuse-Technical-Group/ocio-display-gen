@@ -6,35 +6,24 @@ import PyOpenColorIO as OCIO
 import pytest
 
 from conftest import (
+    ACES2_STUDIO_CONFIG_URI,
     GAMMA,
     PEAK_LUMINANCE,
-    STUDIO_CONFIG_URI,
+    build_reloaded_config,
     d65_xyz,
-    make_characterization,
 )
-from OCIODisplayGen import (
-    COLORIMETRIC_VIEW,
-    DISPLAY_REFERENCE,
-    create_display_colorspace_from_characterization,
-    register_display,
-)
+from OCIODisplayGen import COLORIMETRIC_VIEW
 
 
 @pytest.fixture(scope="module")
 def base_displays() -> list[str]:
-    base = OCIO.Config.CreateFromFile(STUDIO_CONFIG_URI)
+    base = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
     return list(base.getDisplays())
 
 
 @pytest.fixture(scope="module")
 def reloaded(tmp_path_factory: pytest.TempPathFactory) -> tuple[OCIO.Config, str]:
-    """Register the wall via the real generation path, serialize, reload."""
-    config = OCIO.Config.CreateFromFile(STUDIO_CONFIG_URI)
-    cs = create_display_colorspace_from_characterization(make_characterization())
-    display_name = register_display(config, cs)
-    path = tmp_path_factory.mktemp("ocio") / "wall_config.ocio"
-    path.write_text(config.serialize(), encoding="utf-8")
-    return OCIO.Config.CreateFromFile(str(path)), display_name
+    return build_reloaded_config(tmp_path_factory, "wall_config.ocio")
 
 
 def test_wall_display_is_listed(reloaded: tuple[OCIO.Config, str]) -> None:
@@ -66,7 +55,10 @@ def test_colorimetric_view_reproduces_display_code_values(
 ) -> None:
     cfg, display_name = reloaded
     proc = cfg.getProcessor(
-        DISPLAY_REFERENCE, display_name, COLORIMETRIC_VIEW, OCIO.TRANSFORM_DIR_FORWARD
+        OCIO.ROLE_INTERCHANGE_DISPLAY,
+        display_name,
+        COLORIMETRIC_VIEW,
+        OCIO.TRANSFORM_DIR_FORWARD,
     )
     cpu = proc.getDefaultCPUProcessor()
     # 1000 nits D65 white = wall peak → code value 1.0 per channel

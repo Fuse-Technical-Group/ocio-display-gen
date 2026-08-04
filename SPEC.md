@@ -82,7 +82,7 @@ derivation eliminates.)
 
 ## Rendering §spec:view-transform
 
-*Status: in progress*
+*Status: complete*
 
 Rendering intent is a per-view choice made by the operator in the media
 server, not a generation-time decision: the wall is registered with
