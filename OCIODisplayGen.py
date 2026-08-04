@@ -32,20 +32,16 @@ def derive_reference_spaces(ocio_config: "OCIO.Config") -> Tuple[str, str]:
     """
     names = []
     for role in (OCIO.ROLE_INTERCHANGE_SCENE, OCIO.ROLE_INTERCHANGE_DISPLAY):
-        try:
-            name = ocio_config.getCanonicalName(role)
-        except Exception as exc:
-            raise ValueError(
-                f"Base config does not define interchange role '{role}'"
-            ) from exc
+        name = ocio_config.getCanonicalName(role)
         if not name:
             raise ValueError(f"Base config does not define interchange role '{role}'")
         names.append(name)
     return names[0], names[1]
 
 
-# The display reference (CIE-XYZ-D65) white chromaticity. The emitted
-# XYZ→native matrix assumes input XYZ is adapted to this white.
+# The display reference space the emitted matrix assumes, and its white
+# chromaticity: input XYZ must be adapted to this white.
+DISPLAY_REFERENCE = "CIE-XYZ-D65"
 D65_WHITE_XY: Tuple[float, float] = (0.3127, 0.3290)
 
 # The colorimetric view: the bare display colorspace with hard clip,
@@ -184,7 +180,7 @@ def create_display_colorspace_from_characterization(
         characterization, chromatic_adaptation_transform
     )
     matrix_transform = OCIO.MatrixTransform()
-    matrix_transform.setMatrix([float(x) for x in matrix_4x4.flatten()])
+    matrix_transform.setMatrix(matrix_4x4.flatten().tolist())
     group.appendTransform(matrix_transform)
 
     if eotf_type == "GAMMA":
@@ -193,7 +189,7 @@ def create_display_colorspace_from_characterization(
         scale = REFERENCE_LUMINANCE / peak
         scale_transform = OCIO.MatrixTransform()
         scale_matrix = np.diag([scale, scale, scale, 1.0])
-        scale_transform.setMatrix([float(x) for x in scale_matrix.flatten()])
+        scale_transform.setMatrix(scale_matrix.flatten().tolist())
         group.appendTransform(scale_transform)
         clip_max = 1.0
     else:
@@ -250,13 +246,6 @@ def register_display(config: "OCIO.Config", colorspace: OCIO.ColorSpace) -> str:
     active_displays = config.getActiveDisplays()
     if active_displays:
         config.setActiveDisplays(f"{active_displays}, {display_name}")
-
-    # Display-defined views are not filtered by the studio config's
-    # active_views list, but guard against filtering regardless: a
-    # registered display without its view is silently useless.
-    if COLORIMETRIC_VIEW not in config.getViews(display_name):
-        active_views = config.getActiveViews()
-        config.setActiveViews(f"{active_views}, {COLORIMETRIC_VIEW}")
 
     return display_name
 
@@ -573,7 +562,7 @@ def validate_config_data(config: Dict[str, Any]) -> bool:
         if peak_luminance > sdr_threshold:
             if eotf_type == "GAMMA":
                 print(
-                    f"⚠️  Note: GAMMA EOTF with high brightness "
+                    f"Note: GAMMA EOTF with high brightness "
                     f"({peak_luminance} cd/m²) - PQ carries this range with "
                     f"less quantization where the processor supports it"
                 )
@@ -669,10 +658,10 @@ def main():
         scene_reference, display_reference = derive_reference_spaces(ocio_config_obj)
         print(f"Scene reference space: {scene_reference}")
         print(f"Display reference space: {display_reference}")
-        if display_reference != "CIE-XYZ-D65":
+        if display_reference != DISPLAY_REFERENCE:
             raise ValueError(
                 f"Base config display reference is '{display_reference}', "
-                f"but the emitted XYZ→native matrix assumes CIE-XYZ-D65"
+                f"but the emitted XYZ→native matrix assumes {DISPLAY_REFERENCE}"
             )
         cs = create_display_colorspace_from_characterization(characterization)
         display_name = register_display(ocio_config_obj, cs)

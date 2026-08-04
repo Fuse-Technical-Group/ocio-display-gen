@@ -3,45 +3,28 @@
 
 import colour
 import numpy as np
-import numpy.typing as npt
 import PyOpenColorIO as OCIO
 import pytest
 
+from conftest import (
+    GAMMA,
+    PEAK_LUMINANCE,
+    STUDIO_CONFIG_URI,
+    WALL_PRIMARIES,
+    WALL_WHITEPOINT,
+    d65_xyz,
+    make_characterization,
+)
 from OCIODisplayGen import (
     D65_WHITE_XY,
+    DISPLAY_REFERENCE,
     DisplayCharacterization,
     create_display_colorspace_from_characterization,
 )
 
-STUDIO_CONFIG_URI = "ocio://studio-config-v2.1.0_aces-v1.3_ocio-v2.3"
-DISPLAY_REFERENCE = "CIE-XYZ-D65"
-
-# Sample wall measurements from display_config.yaml
-WALL_PRIMARIES = np.array([[0.680, 0.320], [0.265, 0.690], [0.150, 0.060]])
-WALL_WHITEPOINT = (0.3127, 0.3290)
-PEAK_LUMINANCE = 1000.0
-
 # PQ code values (SMPTE ST 2084), absolute nits
 PQ_100_NITS = 0.50808
 PQ_1000_NITS = 0.75183
-
-
-def make_characterization(
-    eotf_type: str = "GAMMA",
-    white_point: tuple[float, float] = WALL_WHITEPOINT,
-) -> DisplayCharacterization:
-    char = DisplayCharacterization("Test Wall")
-    char.primaries = {
-        "red": (0.680, 0.320),
-        "green": (0.265, 0.690),
-        "blue": (0.150, 0.060),
-    }
-    char.white_point = white_point
-    char.black_level = 0.005
-    char.peak_luminance = PEAK_LUMINANCE
-    char.eotf_type = eotf_type
-    char.gamma_value = 2.4
-    return char
 
 
 def wall_processor(char: DisplayCharacterization) -> OCIO.CPUProcessor:
@@ -52,13 +35,6 @@ def wall_processor(char: DisplayCharacterization) -> OCIO.CPUProcessor:
     config.addColorSpace(cs)
     proc = config.getProcessor(DISPLAY_REFERENCE, cs.getName())
     return proc.getDefaultCPUProcessor()
-
-
-def d65_xyz(luminance_y: float) -> npt.NDArray[np.float64]:
-    """D65 white XYZ at the given Y (units of 100 cd/m²)."""
-    return np.asarray(
-        colour.xy_to_XYZ(np.array(D65_WHITE_XY)) * luminance_y, dtype=np.float64
-    )
 
 
 def test_colorspace_is_display_referred() -> None:
@@ -77,7 +53,7 @@ def test_gamma_peak_white_hits_full_code() -> None:
 def test_gamma_100_nits_white() -> None:
     cpu = wall_processor(make_characterization("GAMMA"))
     # 100 nits on a 1000-nit wall: linear 0.1 → 0.1**(1/2.4)
-    expected = (100.0 / PEAK_LUMINANCE) ** (1.0 / 2.4)
+    expected = (100.0 / PEAK_LUMINANCE) ** (1.0 / GAMMA)
     out = cpu.applyRGB(list(d65_xyz(1.0)))
     assert np.allclose(out, [expected] * 3, atol=1e-4)
 
@@ -96,13 +72,13 @@ def test_gamma_primaries_match_colour_science() -> None:
         xyz = colour.xyY_to_XYZ(np.array([xy[0], xy[1], 1.0]))
         rgb = matrix @ xyz
         rgb = np.clip(rgb * (100.0 / PEAK_LUMINANCE), 0.0, 1.0)
-        expected = rgb ** (1.0 / 2.4)
+        expected = rgb ** (1.0 / GAMMA)
         out = np.array(cpu.applyRGB(list(xyz)))
         # Code-value comparison: float32 matrix residuals near zero are
         # amplified by the 1/2.4 exponent, so allow 2e-3 there and pin
         # accuracy with a tight linear-domain comparison below.
         assert np.allclose(out, expected, atol=2e-3), f"primary {xy}"
-        assert np.allclose(out**2.4, rgb, atol=1e-5), f"primary {xy} (linear)"
+        assert np.allclose(out**GAMMA, rgb, atol=1e-5), f"primary {xy} (linear)"
 
 
 def test_pq_absolute_encoding() -> None:

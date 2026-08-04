@@ -1,47 +1,23 @@
 #!/usr/bin/env python3
 """Tests for registering the wall as a named OCIO display."""
 
-import colour
 import numpy as np
-import numpy.typing as npt
 import PyOpenColorIO as OCIO
 import pytest
 
+from conftest import (
+    GAMMA,
+    PEAK_LUMINANCE,
+    STUDIO_CONFIG_URI,
+    d65_xyz,
+    make_characterization,
+)
 from OCIODisplayGen import (
     COLORIMETRIC_VIEW,
-    D65_WHITE_XY,
-    DisplayCharacterization,
+    DISPLAY_REFERENCE,
     create_display_colorspace_from_characterization,
     register_display,
 )
-
-STUDIO_CONFIG_URI = "ocio://studio-config-v2.1.0_aces-v1.3_ocio-v2.3"
-DISPLAY_REFERENCE = "CIE-XYZ-D65"
-PEAK_LUMINANCE = 1000.0
-GAMMA = 2.4
-
-
-def make_characterization() -> DisplayCharacterization:
-    """Sample-yaml characterization values (display_config.yaml)."""
-    char = DisplayCharacterization("Test Wall")
-    char.primaries = {
-        "red": (0.680, 0.320),
-        "green": (0.265, 0.690),
-        "blue": (0.150, 0.060),
-    }
-    char.white_point = (0.3127, 0.3290)
-    char.black_level = 0.005
-    char.peak_luminance = PEAK_LUMINANCE
-    char.eotf_type = "GAMMA"
-    char.gamma_value = GAMMA
-    return char
-
-
-def d65_xyz(luminance_y: float) -> npt.NDArray[np.float64]:
-    """D65 white XYZ at the given Y (units of 100 cd/m²)."""
-    return np.asarray(
-        colour.xy_to_XYZ(np.array(D65_WHITE_XY)) * luminance_y, dtype=np.float64
-    )
 
 
 @pytest.fixture(scope="module")
