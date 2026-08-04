@@ -82,9 +82,6 @@ class DisplayCharacterization:
         # whether color processing / dynamic features are disabled.
         self.processor_intensity: Optional[str] = None
         self.processor_processing_disabled: Optional[bool] = None
-        self.viewing_conditions: Dict[
-            str, object
-        ] = {}  # Ambient light, viewing angle, etc.
 
 
 def create_display_xyz_to_native_matrix(
@@ -399,29 +396,6 @@ def create_characterization_from_config(
     char.white_point_policy = config.get("ocio", {}).get(
         "white_point_policy", "adapted"
     )
-
-    # Combine viewing conditions, metrology, and processor configuration data
-    char.viewing_conditions = config.get("viewing_conditions", {}).copy()
-    if "metrology" in config:
-        char.viewing_conditions.update(config["metrology"])
-    if "configuration" in led_processor_config:
-        # Add processor configuration (excluding eotf which we handle separately)
-        processor_conf = led_processor_config["configuration"].copy()
-        if "eotf" in processor_conf:
-            del processor_conf["eotf"]
-        char.viewing_conditions.update(processor_conf)
-    # Add LED panel and processor info to viewing conditions
-    char.viewing_conditions["led_panel_manufacturer"] = led_panel_config["manufacturer"]
-    char.viewing_conditions["led_panel_model"] = led_panel_config["model"]
-    char.viewing_conditions["led_panel_version"] = led_panel_config["version"]
-    char.viewing_conditions["led_panel_last_calibrated"] = led_panel_config.get(
-        "last_calibrated", ""
-    )
-    char.viewing_conditions["led_processor_manufacturer"] = led_processor_config[
-        "manufacturer"
-    ]
-    char.viewing_conditions["led_processor_model"] = led_processor_config["model"]
-    char.viewing_conditions["led_processor_version"] = led_processor_config["version"]
     return char
 
 
