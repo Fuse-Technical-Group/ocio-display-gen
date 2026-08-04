@@ -7,12 +7,13 @@ import PyOpenColorIO as OCIO
 import pytest
 
 from conftest import (
-    ACES2_STUDIO_CONFIG_URI,
     GAMMA,
     PEAK_LUMINANCE,
     WALL_PRIMARIES,
     WALL_WHITEPOINT,
+    build_reloaded_config,
     make_characterization,
+    scene_view_cpu,
 )
 from OCIODisplayGen import (
     ACES2_VIEW,
@@ -20,8 +21,6 @@ from OCIODisplayGen import (
     REFERENCE_LUMINANCE,
     VP_RADIOMETRIC_VIEW,
     create_aces2_view_transform,
-    create_display_colorspace_from_characterization,
-    register_display,
 )
 
 Setup = tuple[OCIO.Config, str]
@@ -32,26 +31,12 @@ EXPOSURE_RAMP = (0.18, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0)
 
 @pytest.fixture(scope="module")
 def setup(tmp_path_factory: pytest.TempPathFactory) -> Setup:
-    """Register the wall via the real generation path, serialize, reload."""
-    config = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
-    char = make_characterization()
-    cs = create_display_colorspace_from_characterization(char)
-    display_name = register_display(config, cs, char)
-    path = tmp_path_factory.mktemp("ocio") / "wall_aces2.ocio"
-    path.write_text(config.serialize(), encoding="utf-8")
-    return OCIO.Config.CreateFromFile(str(path)), display_name
+    return build_reloaded_config(tmp_path_factory, "wall_aces2.ocio")
 
 
 def view_cpu(setup: Setup) -> OCIO.CPUProcessor:
     """Scene reference → ACES 2.0 view CPU processor."""
-    cfg, display_name = setup
-    proc = cfg.getProcessor(
-        OCIO.ROLE_INTERCHANGE_SCENE,
-        display_name,
-        ACES2_VIEW,
-        OCIO.TRANSFORM_DIR_FORWARD,
-    )
-    return proc.getDefaultCPUProcessor()
+    return scene_view_cpu(setup, ACES2_VIEW)
 
 
 def output_transform_cpu() -> OCIO.CPUProcessor:

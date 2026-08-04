@@ -66,6 +66,7 @@ def validate_display_reference(display_reference: str) -> None:
             f"{', '.join(KNOWN_DISPLAY_REFERENCES)}"
         )
 
+
 # The colorimetric view: the bare display colorspace with hard clip,
 # for measurement and verification work (§spec:view-transform).
 COLORIMETRIC_VIEW = "Colorimetric"
@@ -137,6 +138,56 @@ class DisplayCharacterization:
         # whether color processing / dynamic features are disabled.
         self.processor_intensity: Optional[str] = None
         self.processor_processing_disabled: Optional[bool] = None
+
+
+def _matrix_transform(matrix: npt.NDArray[np.floating[Any]]) -> OCIO.MatrixTransform:
+    """4x4 row-major matrix as an OCIO MatrixTransform."""
+    transform = OCIO.MatrixTransform()
+    transform.setMatrix(matrix.flatten().tolist())
+    return transform
+
+
+def _measured_wall_gamut(
+    characterization: DisplayCharacterization,
+) -> Tuple[
+    float,
+    Tuple[float, float],
+    Tuple[float, float],
+    Tuple[float, float],
+    Tuple[float, float],
+]:
+    """
+    Measured peak and RGBW chromaticities parameterizing the ACES 2.0
+    fixed functions: (peak, red, green, blue, white_point).
+
+    Raises:
+        ValueError: For a missing measured white point.
+    """
+    white_point = characterization.white_point
+    if white_point is None:
+        raise ValueError("Characterization has no measured white point")
+    return (
+        characterization.peak_luminance,
+        characterization.primaries["red"],
+        characterization.primaries["green"],
+        characterization.primaries["blue"],
+        white_point,
+    )
+
+
+def _describe_gamut(
+    red: Tuple[float, float],
+    green: Tuple[float, float],
+    blue: Tuple[float, float],
+    white_point: Tuple[float, float],
+) -> str:
+    """RGBW chromaticities formatted for recorded descriptions."""
+    return (
+        f"R({red[0]:.4f}, {red[1]:.4f}) "
+        f"G({green[0]:.4f}, {green[1]:.4f}) "
+        f"B({blue[0]:.4f}, {blue[1]:.4f}) "
+        f"W({white_point[0]:.4f}, {white_point[1]:.4f})"
+    )
 
 
 def describe_processing_state(disabled: Optional[bool]) -> str:
@@ -252,9 +303,7 @@ def create_display_colorspace_from_characterization(
     if white_point_policy == "absolute":
         policy_note = "absolute (no chromatic adaptation)"
     else:
-        policy_note = (
-            f"adapted ({chromatic_adaptation_transform}, D65 → wall white)"
-        )
+        policy_note = f"adapted ({chromatic_adaptation_transform}, D65 → wall white)"
 
     # Signal contract (§spec:signal-contract): record the processor state
     # the config is valid for, so operators can restore and audit it.
@@ -303,18 +352,13 @@ def create_display_colorspace_from_characterization(
     matrix_4x4 = create_display_xyz_to_native_matrix(
         characterization, chromatic_adaptation_transform
     )
-    matrix_transform = OCIO.MatrixTransform()
-    matrix_transform.setMatrix(matrix_4x4.flatten().tolist())
-    group.appendTransform(matrix_transform)
+    group.appendTransform(_matrix_transform(matrix_4x4))
 
     if eotf_type == "GAMMA":
         # Stage 2: absolute luminance scale — RGB 1.0 = measured peak.
         # Kept as a distinct stage for auditability.
         scale = REFERENCE_LUMINANCE / peak
-        scale_transform = OCIO.MatrixTransform()
-        scale_matrix = np.diag([scale, scale, scale, 1.0])
-        scale_transform.setMatrix(scale_matrix.flatten().tolist())
-        group.appendTransform(scale_transform)
+        group.appendTransform(_matrix_transform(np.diag([scale] * 3 + [1.0])))
         clip_max = 1.0
     else:
         # PQ is absolute (encodes nits directly): omit the luminance
@@ -410,14 +454,7 @@ def create_vp_radiometric_view_transform(
             f"Unknown overflow policy '{overflow_policy}'; "
             f"valid values: {', '.join(OVERFLOW_POLICIES)}"
         )
-    white_point = characterization.white_point
-    if white_point is None:
-        raise ValueError("Characterization has no measured white point")
-
-    peak = characterization.peak_luminance
-    red = characterization.primaries["red"]
-    green = characterization.primaries["green"]
-    blue = characterization.primaries["blue"]
+    peak, red, green, blue, white_point = _measured_wall_gamut(characterization)
 
     if overflow_policy == "shoulder":
         policy_note = (
@@ -437,17 +474,15 @@ def create_vp_radiometric_view_transform(
         f"(unity system gamma). "
         f"Overflow policy: {policy_note}. "
         f"Gamut compressor: measured peak {peak} cd/m², "
-        f"primaries R{red} G{green} B{blue} W{white_point}."
+        f"primaries {_describe_gamut(red, green, blue, white_point)}."
     )
 
     group = OCIO.GroupTransform()
 
     # Stage 1: nits anchor — scene-linear 1.0 → anchor cd/m² in
     # display-linear units (1.0 = REFERENCE_LUMINANCE).
-    anchor_transform = OCIO.MatrixTransform()
     anchor_matrix = np.diag([nits_anchor / REFERENCE_LUMINANCE] * 3 + [1.0])
-    anchor_transform.setMatrix(anchor_matrix.flatten().tolist())
-    group.appendTransform(anchor_transform)
+    group.appendTransform(_matrix_transform(anchor_matrix))
 
     # Stage 2: ACES 2.0 gamut compression sandwich in JMh, limited to
     # the wall's measured gamut and peak. Interior colors untouched;
@@ -478,9 +513,7 @@ def create_vp_radiometric_view_transform(
     ) @ create_display_xyz_to_native_matrix(
         characterization, chromatic_adaptation_transform
     )
-    to_drive = OCIO.MatrixTransform()
-    to_drive.setMatrix(drive.flatten().tolist())
-    group.appendTransform(to_drive)
+    group.appendTransform(_matrix_transform(drive))
 
     # Stage 5: above-peak overflow policy, per channel in drive space.
     # One-sided max clamp only: negatives pass through untouched here —
@@ -493,10 +526,7 @@ def create_vp_radiometric_view_transform(
     group.appendTransform(ceiling)
 
     # Stage 6: back to display reference for the display colorspace.
-    drive_inverse: npt.NDArray[np.float64] = np.linalg.inv(drive)
-    from_drive = OCIO.MatrixTransform()
-    from_drive.setMatrix(drive_inverse.flatten().tolist())
-    group.appendTransform(from_drive)
+    group.appendTransform(_matrix_transform(np.linalg.inv(drive)))
 
     vt.setTransform(group, OCIO.VIEWTRANSFORM_DIR_FROM_REFERENCE)
     return vt
@@ -535,14 +565,7 @@ def create_aces2_view_transform(
     Raises:
         ValueError: For a missing measured white point.
     """
-    white_point = characterization.white_point
-    if white_point is None:
-        raise ValueError("Characterization has no measured white point")
-
-    peak = characterization.peak_luminance
-    red = characterization.primaries["red"]
-    green = characterization.primaries["green"]
-    blue = characterization.primaries["blue"]
+    peak, red, green, blue, white_point = _measured_wall_gamut(characterization)
 
     vt = OCIO.ViewTransform(OCIO.REFERENCE_SPACE_SCENE)
     vt.setName(ACES2_VIEW)
@@ -551,10 +574,7 @@ def create_aces2_view_transform(
         f"full tone scale and chroma compression for finished content "
         f"(IMAG, brand content), limited to the wall's measured gamut "
         f"and peak. Parameterization: peak {peak} cd/m², limiting "
-        f"gamut R({red[0]:.4f}, {red[1]:.4f}) "
-        f"G({green[0]:.4f}, {green[1]:.4f}) "
-        f"B({blue[0]:.4f}, {blue[1]:.4f}) "
-        f"W({white_point[0]:.4f}, {white_point[1]:.4f})."
+        f"gamut {_describe_gamut(red, green, blue, white_point)}."
     )
 
     group = OCIO.GroupTransform()
@@ -579,9 +599,7 @@ def create_aces2_view_transform(
             characterization, chromatic_adaptation_transform
         )
     )
-    from_native = OCIO.MatrixTransform()
-    from_native.setMatrix(native_to_xyz.flatten().tolist())
-    group.appendTransform(from_native)
+    group.appendTransform(_matrix_transform(native_to_xyz))
 
     vt.setTransform(group, OCIO.VIEWTRANSFORM_DIR_FROM_REFERENCE)
     return vt
@@ -623,8 +641,8 @@ def register_display(
 
     Raises:
         ValueError: When the base config's profile version cannot hold
-            the ACES 2.0 fixed functions, or for unknown overflow
-            policies.
+            the ACES 2.0 fixed functions, for unknown overflow
+            policies, or for a missing measured white point.
     """
     version = (config.getMajorVersion(), config.getMinorVersion())
     if version < MIN_ACES2_PROFILE:

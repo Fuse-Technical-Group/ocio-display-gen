@@ -10,14 +10,16 @@ import PyOpenColorIO as OCIO
 import pytest
 
 from conftest import (
-    ACES2_STUDIO_CONFIG_URI,
     GAMMA,
     PEAK_LUMINANCE,
     STUDIO_CONFIG_URI,
+    build_reloaded_config,
     make_characterization,
+    scene_view_cpu,
 )
 from OCIODisplayGen import (
     AP0_CHROMATICITIES,
+    AP0_TO_XYZ_D65_BUILTIN,
     COLORIMETRIC_VIEW,
     REFERENCE_LUMINANCE,
     SHOULDER_KNEE,
@@ -29,50 +31,33 @@ from OCIODisplayGen import (
 )
 
 NITS_ANCHOR = 300.0
-AP0_TO_XYZ_D65_BUILTIN = "UTILITY - ACES-AP0_to_CIE-XYZ-D65_BFD"
 
 Setup = tuple[OCIO.Config, str]
 
 
-def build_reloaded(
-    tmp_path_factory: pytest.TempPathFactory, overflow_policy: str
-) -> Setup:
-    """Register the wall via the real generation path, serialize, reload."""
-    config = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
-    char = make_characterization()
-    cs = create_display_colorspace_from_characterization(char)
-    display_name = register_display(
-        config,
-        cs,
-        char,
-        nits_anchor=NITS_ANCHOR,
-        overflow_policy=overflow_policy,
-    )
-    path = tmp_path_factory.mktemp("ocio") / f"wall_{overflow_policy}.ocio"
-    path.write_text(config.serialize(), encoding="utf-8")
-    return OCIO.Config.CreateFromFile(str(path)), display_name
-
-
 @pytest.fixture(scope="module")
 def clamp_setup(tmp_path_factory: pytest.TempPathFactory) -> Setup:
-    return build_reloaded(tmp_path_factory, "clamp")
+    return build_reloaded_config(
+        tmp_path_factory,
+        "wall_clamp.ocio",
+        nits_anchor=NITS_ANCHOR,
+        overflow_policy="clamp",
+    )
 
 
 @pytest.fixture(scope="module")
 def shoulder_setup(tmp_path_factory: pytest.TempPathFactory) -> Setup:
-    return build_reloaded(tmp_path_factory, "shoulder")
+    return build_reloaded_config(
+        tmp_path_factory,
+        "wall_shoulder.ocio",
+        nits_anchor=NITS_ANCHOR,
+        overflow_policy="shoulder",
+    )
 
 
 def view_cpu(setup: Setup) -> OCIO.CPUProcessor:
     """Scene reference → VP Radiometric view CPU processor."""
-    cfg, display_name = setup
-    proc = cfg.getProcessor(
-        OCIO.ROLE_INTERCHANGE_SCENE,
-        display_name,
-        VP_RADIOMETRIC_VIEW,
-        OCIO.TRANSFORM_DIR_FORWARD,
-    )
-    return proc.getDefaultCPUProcessor()
+    return scene_view_cpu(setup, VP_RADIOMETRIC_VIEW)
 
 
 def apply_neutral(cpu: OCIO.CPUProcessor, v: float) -> npt.NDArray[np.float64]:
@@ -108,9 +93,7 @@ def test_neutral_ramp_clamp_reproduces_anchored_nits(clamp_setup: Setup) -> None
         out = apply_neutral(cpu, v)
         assert np.allclose(out, out[0], atol=1e-5), f"non-neutral output at {v}"
         decoded = out**GAMMA * PEAK_LUMINANCE
-        assert np.allclose(
-            decoded, v * NITS_ANCHOR, rtol=1e-3, atol=0.05
-        ), f"scene {v}"
+        assert np.allclose(decoded, v * NITS_ANCHOR, rtol=1e-3, atol=0.05), f"scene {v}"
 
 
 def test_neutral_ramp_clamp_flat_lines_at_peak(clamp_setup: Setup) -> None:
@@ -127,9 +110,7 @@ def test_shoulder_is_linear_below_knee(shoulder_setup: Setup) -> None:
     # Knee at 0.9 full drive: scene 0.9 * peak / anchor = 3.0
     for v in (0.05, 1.0, 2.0, 2.99):
         decoded = apply_neutral(cpu, v) ** GAMMA * PEAK_LUMINANCE
-        assert np.allclose(
-            decoded, v * NITS_ANCHOR, rtol=1e-3, atol=0.05
-        ), f"scene {v}"
+        assert np.allclose(decoded, v * NITS_ANCHOR, rtol=1e-3, atol=0.05), f"scene {v}"
 
 
 def test_shoulder_flat_lines_above_rolloff(shoulder_setup: Setup) -> None:

@@ -9,14 +9,10 @@ from conftest import (
     ACES2_STUDIO_CONFIG_URI,
     GAMMA,
     PEAK_LUMINANCE,
+    build_reloaded_config,
     d65_xyz,
-    make_characterization,
 )
-from OCIODisplayGen import (
-    COLORIMETRIC_VIEW,
-    create_display_colorspace_from_characterization,
-    register_display,
-)
+from OCIODisplayGen import COLORIMETRIC_VIEW
 
 
 @pytest.fixture(scope="module")
@@ -27,14 +23,7 @@ def base_displays() -> list[str]:
 
 @pytest.fixture(scope="module")
 def reloaded(tmp_path_factory: pytest.TempPathFactory) -> tuple[OCIO.Config, str]:
-    """Register the wall via the real generation path, serialize, reload."""
-    config = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
-    char = make_characterization()
-    cs = create_display_colorspace_from_characterization(char)
-    display_name = register_display(config, cs, char)
-    path = tmp_path_factory.mktemp("ocio") / "wall_config.ocio"
-    path.write_text(config.serialize(), encoding="utf-8")
-    return OCIO.Config.CreateFromFile(str(path)), display_name
+    return build_reloaded_config(tmp_path_factory, "wall_config.ocio")
 
 
 def test_wall_display_is_listed(reloaded: tuple[OCIO.Config, str]) -> None:
