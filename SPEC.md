@@ -47,7 +47,7 @@ with strict and warning modes.
 
 ## Generated config structure §spec:config-structure
 
-*Status: not started*
+*Status: complete*
 
 The tool appends to a prebuilt ACES config (loaded via `ocio://` URI)
 and writes a single self-contained `.ocio` file, because target runtimes
@@ -69,14 +69,16 @@ target one measured wall (and vice versa), and keeps the measurement
 verifiable independently of taste. The prior single-colorspace approach
 conflated the two and hard-clipped all out-of-range values.
 
-The system shall derive the scene- and display-reference spaces from the
-base config's interchange roles rather than assuming them. (The prior
-implementation assumed ACEScg; the studio config's scene reference is
-ACES2065-1 — a silent wrong-matrix bug this structure eliminates.)
+The scene- and display-reference spaces are derived from the base
+config's interchange roles (`aces_interchange`,
+`cie_xyz_d65_interchange`), never assumed; generation fails loud when a
+role is absent. (The prior implementation assumed ACEScg; the studio
+config's scene reference is ACES2065-1 — a silent wrong-matrix bug this
+derivation eliminates.)
 
 ## Rendering §spec:view-transform
 
-*Status: not started*
+*Status: in progress*
 
 Rendering intent is a per-view choice made by the operator in the media
 server, not a generation-time decision: the wall is registered with
