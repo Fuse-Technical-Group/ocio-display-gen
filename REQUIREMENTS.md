@@ -129,9 +129,12 @@ and corrected.
   RGB 12-bit is validated in bmd-signal-gen today; SDI and 10-bit
   YCbCr validation is in progress there. An unvalidated link bakes its
   own quantization into the "measured" response.
-- Instrument support is pinned to Colorimetry Research hardware
-  (CR-300 on hand) behind a minimal driver contract — no generalized
-  instrument framework.
+- Instrument support is pinned to the Colorimetry Research family
+  (CR-300 spectroradiometer and CR-120 colorimeter on hand) via the
+  colour-specio library — no generalized instrument framework.
+  Characterization-grade measurements require the spectroradiometer:
+  colorimeter filter/observer mismatch is largest on narrow-band LED
+  primaries. The colorimeter serves development and drift checks.
 - The generated config is valid only while the processor stays in its
   recorded state (EOTF, intensity, processing disabled).
 - Radiometric claims require an explicit absolute anchor: the config

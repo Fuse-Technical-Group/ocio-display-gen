@@ -241,8 +241,10 @@ Session flow, each stage observable in the session log:
   fault an SDR-contract wall (§req:constraints), so SDR walls are
   driven with explicit SDR signaling.
 - **Instrument read** — settle delay, then a triggered single
-  measurement returning XYZ, behind a minimal driver contract pinned
-  to Colorimetry Research hardware (§req:constraints).
+  measurement returning XYZ via colour-specio (Colorimetry Research
+  family: CR-300 for characterization-grade sessions, CR-120 for
+  drift checks — §req:constraints). colour-specio's virtual
+  instruments back hardware-free session tests.
 - **Report** — the session ends by producing the measurements file and
   invoking the ΔE report; pass/fail per §spec:verification thresholds.
 
@@ -267,8 +269,10 @@ measurements file.
 External systems are referenced, not re-specified: bmd-signal-gen owns
 patch rendering and wire-format correctness (its spec documents the
 validated formats; sessions shall refuse formats not yet validated
-there), pydecklink owns device access, and the instrument repo owns
-probe communication.
+there), pydecklink owns device access, and colour-specio owns
+instrument communication (consumed from PyPI at a pinned version, not
+forked — its `measure()` surface is the driver contract, and upstream
+is the venue for fixes).
 
 ## Scope boundaries §spec:non-goals
 
