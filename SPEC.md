@@ -17,6 +17,10 @@ measured characterization of a specific wall, so the renderer transforms
 scene-linear imagery to the wall's native response and the processor is
 reduced to a fixed, known decode step.
 
+Throughout these documents, "wall" is industry shorthand for any LED
+surface — walls, ceilings, floors, domes, and other geometries. Nothing
+in the system is orientation- or geometry-specific.
+
 ## Characterization model §spec:characterization-model
 
 *Status: in progress*
@@ -270,9 +274,11 @@ External systems are referenced, not re-specified: bmd-signal-gen owns
 patch rendering and wire-format correctness (its spec documents the
 validated formats; sessions shall refuse formats not yet validated
 there), pydecklink owns device access, and colour-specio owns
-instrument communication (consumed from PyPI at a pinned version, not
-forked — its `measure()` surface is the driver contract, and upstream
-is the venue for fixes).
+instrument communication (consumed at a pinned version — a git SHA
+until upstream's current API ships to PyPI — not forked; its
+`measure()` surface is the driver contract, and upstream is the venue
+for fixes: bench-confirmed asks are a fresh PyPI release and a missing
+scipy dependency declaration).
 
 ## Scope boundaries §spec:non-goals
 
