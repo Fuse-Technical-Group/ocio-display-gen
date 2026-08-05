@@ -12,7 +12,7 @@ import PyOpenColorIO as OCIO
 import pytest
 import yaml  # type: ignore[import]
 
-from conftest import ACES2_STUDIO_CONFIG_URI
+from conftest import ACES2_STUDIO_CONFIG_URI, SAMPLE_DECISIONS_PATH
 from OCIODisplayGen import (
     GENERATOR_VERSION,
     create_characterization,
@@ -22,7 +22,7 @@ from OCIODisplayGen import (
     register_display,
 )
 
-REPO_DIR = Path(__file__).parent
+REPO_DIR = SAMPLE_DECISIONS_PATH.parent
 ARTIFACT_NAME = "measurements/ftg_stage1_20240115.yaml"
 
 
@@ -52,7 +52,9 @@ def generate_config_text(decisions_path: Path) -> str:
     config = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
     cs = create_display_colorspace_from_characterization(char)
     register_display(config, cs, char)
-    record_provenance(config, provenance)
+    record_provenance(
+        config, provenance, decisions.get("show", {}).get("description")
+    )
     return config.serialize()
 
 
@@ -73,6 +75,7 @@ def test_description_carries_input_hashes_and_version(tmp_path: Path) -> None:
     assert f"decisions sha256={decisions_sha}" in description
     assert f"measurements sha256={measurements_sha} ({ARTIFACT_NAME})" in description
     assert f"generator ociodisplaygen {GENERATOR_VERSION}" in description
+    assert "Show: FTG Stage 1" in description
 
 
 def test_provenance_appends_to_base_description(tmp_path: Path) -> None:
@@ -146,7 +149,4 @@ def test_consecutive_generations_are_byte_identical(tmp_path: Path) -> None:
     decisions_path = copy_samples(tmp_path)
     first = generate_config_text(decisions_path)
     second = generate_config_text(decisions_path)
-    assert (
-        hashlib.sha256(first.encode("utf-8")).hexdigest()
-        == hashlib.sha256(second.encode("utf-8")).hexdigest()
-    )
+    assert first == second

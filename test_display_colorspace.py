@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Tests for the display-referred wall colorspace builder."""
 
-from pathlib import Path
-
 import colour
 import numpy as np
 import PyOpenColorIO as OCIO
@@ -15,6 +13,7 @@ from conftest import (
     WALL_PRIMARIES,
     WALL_WHITEPOINT,
     d65_xyz,
+    load_sample_inputs,
     make_characterization,
 )
 from OCIODisplayGen import (
@@ -24,7 +23,6 @@ from OCIODisplayGen import (
     create_characterization,
     create_display_colorspace_from_characterization,
     create_display_xyz_to_native_matrix,
-    load_inputs,
     validate_inputs,
 )
 
@@ -187,23 +185,15 @@ def test_description_records_absolute_policy() -> None:
     )
 
 
-def sample_inputs() -> tuple[dict, dict]:
-    """Fresh parse of the shipped samples — each call returns new objects."""
-    decisions, measurements, _ = load_inputs(
-        str(Path(__file__).parent / "decisions.yaml")
-    )
-    return decisions, measurements
-
-
 def test_yaml_white_point_policy_parsed() -> None:
-    decisions, measurements = sample_inputs()
+    decisions, measurements = load_sample_inputs()
     decisions["ocio"]["white_point_policy"] = "absolute"
     char = create_characterization(decisions, measurements)
     assert char.white_point_policy == "absolute"
 
 
 def test_yaml_white_point_policy_defaults_to_adapted() -> None:
-    decisions, measurements = sample_inputs()
+    decisions, measurements = load_sample_inputs()
     decisions["ocio"].pop("white_point_policy", None)
     char = create_characterization(decisions, measurements)
     assert char.white_point_policy == "adapted"
@@ -252,13 +242,13 @@ def test_description_omits_intensity_when_absent() -> None:
 
 
 def test_yaml_processor_state_parsed() -> None:
-    char = create_characterization(*sample_inputs())
+    char = create_characterization(*load_sample_inputs())
     assert char.processor_intensity == "100%"
     assert char.processor_processing_disabled is True
 
 
 def test_yaml_processor_state_absent_is_none() -> None:
-    decisions, measurements = sample_inputs()
+    decisions, measurements = load_sample_inputs()
     contract = decisions["signal_contract"]
     contract.pop("intensity", None)
     contract.pop("processing_disabled", None)
@@ -272,7 +262,7 @@ def test_yaml_processor_state_absent_is_none() -> None:
 
 
 def inputs_without_processor_state(strict_mode: bool) -> tuple[dict, dict]:
-    decisions, measurements = sample_inputs()
+    decisions, measurements = load_sample_inputs()
     decisions["validation"]["strict_mode"] = strict_mode
     contract = decisions["signal_contract"]
     contract.pop("intensity", None)

@@ -8,15 +8,19 @@ from typing import Any
 import pytest
 import yaml  # type: ignore[import]
 
-from conftest import GAMMA, PEAK_LUMINANCE, WALL_PRIMARIES, WALL_WHITEPOINT
+from conftest import (
+    GAMMA,
+    PEAK_LUMINANCE,
+    SAMPLE_DECISIONS_PATH,
+    WALL_PRIMARIES,
+    WALL_WHITEPOINT,
+)
 from OCIODisplayGen import (
     create_characterization,
     load_inputs,
     resolve_measurements_pointer,
     validate_inputs,
 )
-
-SAMPLE_DECISIONS_PATH = Path(__file__).parent / "decisions.yaml"
 
 
 def make_decisions_dict(strict_mode: bool = False) -> dict[str, Any]:
@@ -124,7 +128,7 @@ def test_invalid_overflow_policy_fails_strict() -> None:
 # missing pointer, missing keys, or an unreadable artifact fail loud.
 
 
-def test_shipped_samples_produce_old_characterization() -> None:
+def test_shipped_samples_characterization_matches_sample_wall() -> None:
     decisions, measurements, _ = load_inputs(str(SAMPLE_DECISIONS_PATH))
     char = create_characterization(decisions, measurements)
     assert char.name == "ROE Black Pearl 2 (NS) (2018) + Brompton S8 (3.5.2)"
@@ -141,16 +145,6 @@ def test_shipped_samples_produce_old_characterization() -> None:
     assert char.processor_intensity == "100%"
     assert char.processor_processing_disabled is True
     assert char.white_point_policy == "adapted"
-
-
-def test_shipped_pointer_is_structurally_valid() -> None:
-    decisions, _, provenance = load_inputs(str(SAMPLE_DECISIONS_PATH))
-    pointer = decisions["measurements"]
-    assert set(pointer) >= {"file", "sha256"}
-    # sha256 hex digest of the artifact bytes, enforced at load
-    # (§spec:provenance) — load_inputs succeeding proves the shipped
-    # pointer hash matches the shipped artifact.
-    assert provenance.measurements_sha256 == pointer["sha256"]
 
 
 def test_missing_promotion_pointer_fails() -> None:

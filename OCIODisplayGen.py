@@ -118,6 +118,12 @@ ACES2_BASE_CONFIG_URI = "ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5"
 WHITE_POINT_POLICIES = ("adapted", "absolute")
 
 
+def unknown_policy_message(kind: str, value: str, valid: Tuple[str, ...]) -> str:
+    """Shared policy-enum failure message, so the validator's warnings
+    and the transform builders' errors cannot drift."""
+    return f"Unknown {kind} '{value}'; valid values: {', '.join(valid)}"
+
+
 class DisplayCharacterization:
     """Class to hold display characterization data"""
 
@@ -231,8 +237,9 @@ def create_display_xyz_to_native_matrix(
     white_point_policy = characterization.white_point_policy
     if white_point_policy not in WHITE_POINT_POLICIES:
         raise ValueError(
-            f"Unknown white point policy '{white_point_policy}'; "
-            f"valid values: {', '.join(WHITE_POINT_POLICIES)}"
+            unknown_policy_message(
+                "white point policy", white_point_policy, WHITE_POINT_POLICIES
+            )
         )
 
     primaries = np.array(
@@ -454,8 +461,9 @@ def create_vp_radiometric_view_transform(
     """
     if overflow_policy not in OVERFLOW_POLICIES:
         raise ValueError(
-            f"Unknown overflow policy '{overflow_policy}'; "
-            f"valid values: {', '.join(OVERFLOW_POLICIES)}"
+            unknown_policy_message(
+                "overflow policy", overflow_policy, OVERFLOW_POLICIES
+            )
         )
     # A non-positive or non-finite anchor would generate a validating
     # config that emits black or inverted signal — fail loud instead.
@@ -728,70 +736,59 @@ class Provenance(NamedTuple):
     measurements_sha256: str
 
 
-def compute_file_sha256(path: str, role: str) -> str:
-    """
-    sha256 hex digest over a file's bytes (§spec:provenance).
+class PromotionPointer(NamedTuple):
+    """The decisions file's validated promotion pointer
+    (§spec:provenance): artifact path as written, the recorded digest
+    normalized to lowercase, and the path resolved against the
+    decisions file's directory."""
 
-    Args:
-        path: File to hash
-        role: Human-readable role for error messages
+    file: str
+    sha256: str
+    artifact_path: str
+
+
+def read_file_bytes(path: str, role: str) -> bytes:
+    """
+    A file's bytes, read once — callers hash and parse the same bytes,
+    so the parsed content is exactly what the hash attests
+    (§spec:provenance).
 
     Raises:
         ValueError: For an unreadable file.
     """
     try:
         with open(path, "rb") as f:
-            return hashlib.file_digest(f, "sha256").hexdigest()
+            return f.read()
     except OSError as e:
         raise ValueError(f"{role} '{path}' is not readable: {e}") from e
 
 
 def enforce_promotion_hash(
-    decisions: Dict[str, Any], decisions_path: str, artifact_path: str
-) -> Provenance:
+    pointer: PromotionPointer, artifact_bytes: bytes, decisions_path: str
+) -> str:
     """
-    Enforce the promotion pointer's recorded hash against the
-    measurements artifact on disk and hash both inputs
-    (§spec:provenance).
-
-    The recorded digest is case-normalized before comparison. The
-    comparison uses hmac.compare_digest as a cheap constant-time
-    habit; the threat model is error and drift, not adversaries.
+    Enforce the promotion pointer's recorded hash over the artifact
+    bytes (§spec:provenance). The comparison uses hmac.compare_digest
+    as a cheap constant-time habit; the threat model is error and
+    drift, not adversaries.
 
     Returns:
-        Provenance carrying both input hashes and the file paths as
-        written (pointer path for the artifact, loader path for the
-        decisions file).
+        The artifact's actual sha256 hex digest.
 
     Raises:
-        ValueError: For a malformed recorded digest, an unreadable
-            input, or a hash mismatch — the artifact is not the
-            measurement of record and generation must refuse.
+        ValueError: On mismatch — the artifact is not the measurement
+            of record and generation must refuse.
     """
-    pointer = decisions["measurements"]
-    pointer_file = str(pointer["file"])
-    recorded = str(pointer["sha256"]).lower()
-    if not SHA256_HEX_PATTERN.fullmatch(recorded):
+    actual = hashlib.sha256(artifact_bytes).hexdigest()
+    if not hmac.compare_digest(actual, pointer.sha256):
         raise ValueError(
-            f"Decisions file '{decisions_path}' promotion pointer sha256 "
-            f"'{pointer['sha256']}' is malformed — expected a 64-character "
-            f"hex sha256 digest of '{pointer_file}' (§spec:provenance)"
-        )
-    actual = compute_file_sha256(artifact_path, "Measurements artifact")
-    if not hmac.compare_digest(actual, recorded):
-        raise ValueError(
-            f"Measurements artifact '{pointer_file}' does not match the "
+            f"Measurements artifact '{pointer.file}' does not match the "
             f"promotion pointer in '{decisions_path}': recorded sha256 "
-            f"{recorded}, actual sha256 {actual}. The artifact is not the "
-            f"measurement of record — refusing to generate "
+            f"{pointer.sha256}, actual sha256 {actual}. The artifact is "
+            f"not the measurement of record — refusing to generate "
             f"(§spec:provenance)"
         )
-    return Provenance(
-        decisions_file=decisions_path,
-        decisions_sha256=compute_file_sha256(decisions_path, "Decisions file"),
-        measurements_file=pointer_file,
-        measurements_sha256=actual,
-    )
+    return actual
 
 
 def provenance_description(provenance: Provenance) -> str:
@@ -806,54 +803,58 @@ def provenance_description(provenance: Provenance) -> str:
     )
 
 
-def record_provenance(config: "OCIO.Config", provenance: Provenance) -> None:
-    """Append provenance lines to the config's top-level description,
-    preserving the base config's own description (§spec:provenance)."""
+def record_provenance(
+    config: "OCIO.Config",
+    provenance: Provenance,
+    show_description: Optional[str] = None,
+) -> None:
+    """Append the show identity (when decided) and provenance lines to
+    the config's top-level description, preserving the base config's
+    own description (§spec:provenance)."""
     base = config.getDescription().rstrip()
     lines = provenance_description(provenance)
+    if show_description:
+        lines = f"Show: {show_description}\n{lines}"
     config.setDescription(f"{base}\n\n{lines}" if base else lines)
 
 
-def load_yaml_mapping(path: str, role: str) -> Dict[str, Any]:
+def parse_yaml_mapping(data: bytes, path: str, role: str) -> Dict[str, Any]:
     """
-    Load a YAML file that must parse to a mapping.
+    Parse YAML bytes that must be a mapping.
 
     Args:
-        path: File to load
+        data: File bytes (from read_file_bytes)
+        path: Source path for error messages
         role: Human-readable role for error messages
             (e.g. "Decisions file")
 
     Raises:
-        ValueError: For an unreadable file, invalid YAML, or content
-            that is not a mapping.
+        ValueError: For invalid YAML or content that is not a mapping.
     """
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-    except OSError as e:
-        raise ValueError(f"{role} '{path}' is not readable: {e}") from e
+        parsed = yaml.safe_load(data)
     except yaml.YAMLError as e:
         raise ValueError(f"{role} '{path}' is not valid YAML: {e}") from e
-    if not isinstance(data, dict):
+    if not isinstance(parsed, dict):
         raise ValueError(f"{role} '{path}' must be a YAML mapping")
-    return cast(Dict[str, Any], data)
+    return cast(Dict[str, Any], parsed)
 
 
-def resolve_measurements_pointer(decisions: Dict[str, Any], decisions_path: str) -> str:
+def resolve_measurements_pointer(
+    decisions: Dict[str, Any], decisions_path: str
+) -> PromotionPointer:
     """
-    Resolve the decisions file's promotion pointer to the measurements
-    artifact of record (§spec:provenance).
+    Validate the decisions file's promotion pointer and resolve it to
+    the measurements artifact of record (§spec:provenance).
 
     The pointer is `measurements: {file, sha256}`; `file` resolves
-    relative to the decisions file's directory. This only requires the
-    pointer to be structurally complete; hash enforcement is
-    enforce_promotion_hash.
-
-    Returns:
-        Absolute path to the measurements artifact.
+    relative to the decisions file's directory. This validates the
+    pointer's structure (keys present, well-formed digest); hash
+    enforcement is enforce_promotion_hash.
 
     Raises:
-        ValueError: For a missing pointer or missing pointer keys.
+        ValueError: For a missing pointer, missing pointer keys, or a
+            malformed recorded digest.
     """
     pointer = decisions.get("measurements")
     if not isinstance(pointer, dict):
@@ -869,8 +870,20 @@ def resolve_measurements_pointer(decisions: Dict[str, Any], decisions_path: str)
             f"missing {', '.join(repr(key) for key in missing)} — expected "
             "'measurements: {file, sha256}' (§spec:provenance)"
         )
-    return os.path.join(
-        os.path.dirname(os.path.abspath(decisions_path)), str(pointer["file"])
+    pointer_file = str(pointer["file"])
+    recorded = str(pointer["sha256"]).lower()
+    if not SHA256_HEX_PATTERN.fullmatch(recorded):
+        raise ValueError(
+            f"Decisions file '{decisions_path}' promotion pointer sha256 "
+            f"'{pointer['sha256']}' is malformed — expected a 64-character "
+            f"hex sha256 digest of '{pointer_file}' (§spec:provenance)"
+        )
+    return PromotionPointer(
+        file=pointer_file,
+        sha256=recorded,
+        artifact_path=os.path.join(
+            os.path.dirname(os.path.abspath(decisions_path)), pointer_file
+        ),
     )
 
 
@@ -879,7 +892,8 @@ def load_inputs(
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Provenance]:
     """
     Load the decisions file and the measurements artifact it promotes,
-    enforcing the promotion hash (§spec:provenance).
+    enforcing the promotion hash (§spec:provenance). Each file is read
+    once; the bytes that are hashed are the bytes that are parsed.
 
     Returns:
         (decisions, measurements, provenance).
@@ -889,10 +903,22 @@ def load_inputs(
             malformed promotion pointer, an unreadable artifact, or a
             promotion-hash mismatch.
     """
-    decisions = load_yaml_mapping(decisions_path, "Decisions file")
-    artifact_path = resolve_measurements_pointer(decisions, decisions_path)
-    provenance = enforce_promotion_hash(decisions, decisions_path, artifact_path)
-    measurements = load_yaml_mapping(artifact_path, "Measurements artifact")
+    decisions_bytes = read_file_bytes(decisions_path, "Decisions file")
+    decisions = parse_yaml_mapping(decisions_bytes, decisions_path, "Decisions file")
+    pointer = resolve_measurements_pointer(decisions, decisions_path)
+    artifact_bytes = read_file_bytes(pointer.artifact_path, "Measurements artifact")
+    measurements_sha256 = enforce_promotion_hash(
+        pointer, artifact_bytes, decisions_path
+    )
+    measurements = parse_yaml_mapping(
+        artifact_bytes, pointer.artifact_path, "Measurements artifact"
+    )
+    provenance = Provenance(
+        decisions_file=decisions_path,
+        decisions_sha256=hashlib.sha256(decisions_bytes).hexdigest(),
+        measurements_file=pointer.file,
+        measurements_sha256=measurements_sha256,
+    )
     return decisions, measurements, provenance
 
 
@@ -1023,35 +1049,34 @@ def validate_decisions_data(
     """
     ocio_settings = decisions.get("ocio", {})
 
-    # White point policy enum (§spec:white-point)
+    # Policy enums (§spec:white-point, §spec:view-transform). Non-strict
+    # mode only defers the failure: the transform builders raise on the
+    # same values at generation time.
     white_point_policy = ocio_settings.get("white_point_policy", "adapted")
     if white_point_policy not in WHITE_POINT_POLICIES:
-        message = (
-            f"❌ Warning: Unknown white point policy '{white_point_policy}'; "
-            f"valid values: {', '.join(WHITE_POINT_POLICIES)}"
+        print(
+            "❌ Warning: "
+            + unknown_policy_message(
+                "white point policy", white_point_policy, WHITE_POINT_POLICIES
+            )
         )
         if strict_mode:
-            print(message)
             return False
-        else:
-            print(message)
     else:
         print(f"✓ White point policy: {white_point_policy}")
 
-    # Overflow policy enum (§spec:view-transform)
     overflow_policy = ocio_settings.get("vp_radiometric", {}).get(
         "overflow_policy", DEFAULT_OVERFLOW_POLICY
     )
     if overflow_policy not in OVERFLOW_POLICIES:
-        message = (
-            f"❌ Warning: Unknown overflow policy '{overflow_policy}'; "
-            f"valid values: {', '.join(OVERFLOW_POLICIES)}"
+        print(
+            "❌ Warning: "
+            + unknown_policy_message(
+                "overflow policy", overflow_policy, OVERFLOW_POLICIES
+            )
         )
         if strict_mode:
-            print(message)
             return False
-        else:
-            print(message)
     else:
         print(f"✓ Overflow policy: {overflow_policy}")
 
@@ -1067,16 +1092,13 @@ def validate_decisions_data(
             if field in contract:
                 print(f"✓ Processor {field} recorded: {contract[field]}")
                 continue
-            message = (
+            print(
                 f"❌ Warning: 'signal_contract.{field}' "
                 f"({meaning}) is missing — the signal contract cannot be "
                 f"recorded in the config metadata"
             )
             if strict_mode:
-                print(message)
                 return False
-            else:
-                print(message)
 
     return True
 
@@ -1406,7 +1428,11 @@ def main():
             nits_anchor=nits_anchor,
             overflow_policy=overflow_policy,
         )
-        record_provenance(ocio_config_obj, provenance)
+        record_provenance(
+            ocio_config_obj,
+            provenance,
+            decisions.get("show", {}).get("description"),
+        )
         try:
             ocio_config_obj.validate()
         except Exception as exc:
