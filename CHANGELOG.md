@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- `display_config.yaml` split into `decisions.yaml` (human decisions:
+  show naming, intended signal contract, OCIO targeting, validation
+  mode) and a machine-format measurements artifact
+  (`measurements/ftg_stage1_20240115.yaml`, shipped as a hand-built
+  sample), joined by a `measurements: {file, sha256}` promotion
+  pointer. Generated output is byte-identical to the old input path;
+  hash enforcement lands with §road:hash-binding.
+
 ### Added
 
 - VP Radiometric view (default): configurable nits anchor

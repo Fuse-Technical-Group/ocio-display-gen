@@ -177,7 +177,7 @@ for older runtimes. The generated config's profile version shall never
 exceed the target runtime's OCIO library version (Disguise documents
 this as a hard compatibility requirement).
 
-Target tiers, selected in `display_config.yaml`:
+Target tiers, selected in the decisions file:
 
 | Tier | Runtime | Basis | Rendering |
 |------|---------|-------|-----------|
@@ -227,7 +227,7 @@ exponent, and a nonstandard decode state defeats on-site auditability.
 
 When the wall's calibrated white differs from the content white (D65),
 the config applies one of two explicit policies, selected in
-`display_config.yaml` and recorded in the output:
+the decisions file and recorded in the output:
 
 - **adapted** (default): chromatic adaptation maps content white to the
   wall's native white. Preserves full brightness; standard practice.

@@ -35,7 +35,8 @@ having an unknown algorithm in the display do the transformation.
    ```
 
 3. **Edit configuration files**:
-   - `display_config.yaml` - Your display measurements and base config selection
+   - `decisions.yaml` - Your show decisions (naming, signal contract, base config selection) and the promotion pointer to the measurements artifact
+   - `measurements/ftg_stage1_20240115.yaml` - Measurements artifact of record (machine-format; the shipped file is a hand-built sample)
    - `validation_settings.yaml` - Validation parameters (optional, uses defaults if missing)
 
 4. **Generate custom configuration**:
@@ -51,7 +52,8 @@ having an unknown algorithm in the display do the transformation.
    ```
 
 2. **Edit configuration files**:
-   - `display_config.yaml` - Your display measurements and base config selection
+   - `decisions.yaml` - Your show decisions (naming, signal contract, base config selection) and the promotion pointer to the measurements artifact
+   - `measurements/ftg_stage1_20240115.yaml` - Measurements artifact of record (machine-format; the shipped file is a hand-built sample)
    - `validation_settings.yaml` - Validation parameters (optional, uses defaults if missing)
 
 3. **Generate custom configuration**:

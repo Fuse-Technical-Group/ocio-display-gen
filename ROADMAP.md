@@ -8,19 +8,11 @@ the loop exists to judge them.
 
 ## Artifact provenance §road:artifact-provenance
 
-### Split decisions from measurements §road:split-decisions-measurements
-
-Split `display_config.yaml` into a human-authored decisions file and a
-machine-written measurements artifact consumed together by
-`OCIODisplayGen.py`, with the promotion pointer as `{file, sha256}`.
-§spec:characterization-model.
-
 ### Hash-bind generated artifacts §road:hash-binding
 
 Record input hashes and generator version in generated config
 metadata; refuse generation on promotion-hash mismatch; preserve
-byte-determinism. §spec:provenance. Depends on
-§road:split-decisions-measurements.
+byte-determinism. §spec:provenance.
 
 **Verify:** Generate from split files and confirm the config
 description carries both input hashes and the generator version.
@@ -91,8 +83,7 @@ Add the `characterize` session mode: fixed device-referred patch
 protocol driven raw (no OCIO), emitting the immutable measurements
 artifact with embedded processor snapshot, instrument identity, and
 ambient floor. §spec:measurement-loop,
-§spec:characterization-model. Depends on §road:session-orchestrator
-and §road:split-decisions-measurements.
+§spec:characterization-model. Depends on §road:session-orchestrator.
 
 **Verify:** With a mock instrument driver that returns the session's
 own predictions: run the session command end-to-end and confirm it

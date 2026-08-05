@@ -1,4 +1,5 @@
-"""Shared test fixtures: sample-wall values from display_config.yaml."""
+"""Shared test fixtures: sample-wall values from the shipped sample inputs
+(decisions.yaml + its promoted measurements artifact)."""
 
 from typing import Any
 
@@ -18,7 +19,7 @@ from OCIODisplayGen import (
 STUDIO_CONFIG_URI = "ocio://studio-config-v2.1.0_aces-v1.3_ocio-v2.3"
 ACES2_STUDIO_CONFIG_URI = "ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5"
 
-# Sample wall measurements from display_config.yaml
+# Sample wall measurements from the shipped measurements artifact
 WALL_PRIMARIES = np.array([[0.680, 0.320], [0.265, 0.690], [0.150, 0.060]])
 WALL_WHITEPOINT = (0.3127, 0.3290)
 PEAK_LUMINANCE = 1000.0
