@@ -35,7 +35,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `--check-predictions FILE` reports what a predictions artifact
   describes and exits nonzero when the config it names is no longer the
-  config on disk.
+  config on disk. A parsed artifact is treated as untrusted input, on
+  the same terms as the promotion pointer: the config name and patch
+  ids must be bare filenames beside the artifact, the recorded digest
+  must be a well-formed sha256, and no field may carry control
+  characters.
 
 - Hash binding (§spec:provenance): generation refuses when the
   measurements artifact on disk does not hash to the promotion
