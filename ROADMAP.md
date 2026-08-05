@@ -1,25 +1,9 @@
 # ocio-display-gen — Roadmap
 
 Sections run the walking skeleton to closed-loop measurement first:
-provenance underpins the artifact chain, the harness makes accuracy
-checkable, and sessions make it measurable. Runtime back-compat
-(version tiers) and model refinement (measured response) follow once
-the loop exists to judge them.
-
-## Artifact provenance §road:artifact-provenance
-
-### Hash-bind generated artifacts §road:hash-binding
-
-Record input hashes and generator version in generated config
-metadata; refuse generation on promotion-hash mismatch; preserve
-byte-determinism. §spec:provenance.
-
-**Verify:** Generate from split files and confirm the config
-description carries both input hashes and the generator version.
-Tamper one byte of the measurements artifact and confirm generation
-refuses, naming the mismatch. Regenerate from untouched inputs and
-confirm byte-identical output. Hand-edit a measured value and confirm
-the promotion hash catches it.
+the harness makes accuracy checkable, and sessions make it
+measurable. Runtime back-compat (version tiers) and model refinement
+(measured response) follow once the loop exists to judge them.
 
 ## Verification harness §road:verification-harness
 

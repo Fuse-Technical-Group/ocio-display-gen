@@ -12,8 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   mode) and a machine-format measurements artifact
   (`measurements/ftg_stage1_20240115.yaml`, shipped as a hand-built
   sample), joined by a `measurements: {file, sha256}` promotion
-  pointer. Generated output is byte-identical to the old input path;
-  hash enforcement lands with §road:hash-binding.
+  pointer. Emitted transforms are unchanged by the split.
 
 ### Added
 

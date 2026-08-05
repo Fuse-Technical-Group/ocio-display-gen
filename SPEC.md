@@ -260,7 +260,7 @@ chain bounds the real error.
 
 ## Artifact provenance §spec:provenance
 
-*Status: not started*
+*Status: complete*
 
 Every artifact in the pipeline records the sha256 content hashes of
 its inputs, binding the chain as it is built:
