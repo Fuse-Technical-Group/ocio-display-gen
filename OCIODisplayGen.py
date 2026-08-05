@@ -143,7 +143,6 @@ class DisplayCharacterization:
         self.contrast_ratio = 1000.0  # Measured contrast ratio
         self.eotf_type = "PQ"  # Display EOTF type: "PQ", "HLG", "GAMMA"
         self.gamma_value = 2.4  # For gamma-based EOTF (display property)
-        self.measured_response: Optional[str] = None  # Custom measured response curve
         self.white_point_policy = "adapted"  # "adapted" or "absolute"
         # Processor state the config is valid for (§spec:signal-contract):
         # locked intensity (free-form: percent or nits as configured) and
