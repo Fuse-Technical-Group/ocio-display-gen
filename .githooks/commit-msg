@@ -1,0 +1,19 @@
+#!/bin/sh
+# Strip AI attribution lines from commit messages
+tmp=$(mktemp) && grep -v -e '^Co-Authored-By:' -e 'Claude' -e 'Anthropic' "$1" > "$tmp" && mv "$tmp" "$1"
+
+# Enforce conventional commit syntax on the first line
+first_line=$(head -n 1 "$1")
+pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?!?: .+'
+
+if ! echo "$first_line" | grep -Eq "$pattern"; then
+  echo "ERROR: Commit message does not follow Conventional Commits format." >&2
+  echo "" >&2
+  echo "  Expected: <type>[(scope)][!]: <description>" >&2
+  echo "  Types:    feat fix docs style refactor perf test build ci chore revert" >&2
+  echo "" >&2
+  echo "  Got: $first_line" >&2
+  echo "" >&2
+  echo "  See: https://www.conventionalcommits.org/" >&2
+  exit 1
+fi

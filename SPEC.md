@@ -92,7 +92,7 @@ surround compensation, and the encoding leg is transparent by
 construction (§spec:signal-contract, §spec:config-structure).
 
 **Why radiometric is the default:** in virtual production the wall is
-a light source being photographed. The camera must see the radiometry
+a light source being photographed. The camera shall see the radiometry
 the scene data specifies; photographic rendering belongs in the show's
 grade, not in the wall.
 
@@ -130,7 +130,7 @@ this as a hard compatibility requirement).
 Target tiers, selected in the show manifest:
 
 | Tier | Runtime | Basis | Rendering |
-|------|---------|-------|-----------|
+| ------ | --------- | ------- | ----------- |
 | 2.5 | Disguise r32.2+, current DCCs | ACES 2.0 studio config | All three views (§spec:view-transform) |
 | 2.4 | Disguise r29.1–r32.1 | ACES 1.3 studio config | VP Radiometric + ACES via 2.0 fixed functions (verify availability/naming per 2.4.x) |
 | ≤2.3 | Legacy runtimes | ACES 1.3 studio config | ACES view falls back to nearest ACES 1.3 HDR output (peak-nit variant); VP Radiometric degrades to colorimetric hard clip — no parameterized gamut compressor exists |
@@ -166,7 +166,7 @@ manifest and recorded in the output:
 
 **Why explicit:** the prior implementation applied a chromatic
 adaptation transform silently via library defaults. The choice is
-visible on camera and must be a recorded decision, not a side effect.
+visible on camera and shall be a recorded decision, not a side effect.
 
 ## Predictions §spec:verification
 
