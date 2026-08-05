@@ -140,6 +140,10 @@ and corrected.
   RGB 12-bit is validated in bmd-signal-gen today; SDI and 10-bit
   YCbCr validation is in progress there. An unvalidated link bakes its
   own quantization into the "measured" response.
+- Validation and reporting are independent of the correction under
+  test: OLE-Toolset (org-owned) judges measurements whether the wall
+  was driven through this pipeline or a vendor calibration — the
+  referee has no stake in the mechanism it grades.
 - Instrument support is pinned to the Colorimetry Research family
   (CR-300 spectroradiometer and CR-120 colorimeter on hand) via the
   colour-specio library — no generalized instrument framework.
