@@ -2,26 +2,9 @@
 
 Component roadmap for the generate layer of
 [color-wrangler](https://github.com/Fuse-Technical-Group/color-wrangler).
-Session and validation work live in the umbrella roadmap; this repo ships
-predictions first (the verification handoff), then model refinement,
-then runtime back-compat, then documentation pruning.
-
-## Verification handoff §road:verification-harness
-
-### Probe patches and predictions §road:probe-patches
-
-Generate probe patch imagery with predicted on-wall XYZ values for a
-given generated config, emitting a documented, stable predictions
-file (config hash included per §spec:provenance) as the contract
-consumed by color-wrangler sessions and OLE-Toolset.
-§spec:verification.
-
-**Verify:** Predictions for the sample config match colour-science
-reference computation within float tolerance; the predictions file
-round-trips (parse → re-emit byte-identical) with the config hash
-present. Against a synthetic measurement file equal to the
-predictions, a test-level ΔE2000 comparison reports ≈ 0 and the
-unity-exponent criterion holds; a perturbed patch is flagged.
+Session and validation work live in the umbrella roadmap. The
+verification handoff has shipped (§spec:verification); what remains is
+model refinement, then runtime back-compat, then documentation pruning.
 
 ## Measured response §road:measured-response
 

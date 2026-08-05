@@ -170,16 +170,56 @@ visible on camera and must be a recorded decision, not a side effect.
 
 ## Predictions §spec:verification
 
-*Status: not started*
+*Status: complete*
 
-This component's share of the verification loop is prediction: for a
-given generated config, emit probe patch imagery and a documented,
-stable predictions file (config hash included per §spec:provenance) —
-the handoff contract consumed by color-wrangler sessions and analyzed by
-OLE-Toolset against the umbrella's thresholds (ΔE2000 ≤ 2 avg / ≤ 5
-max, unity exponent). Round-trip unit tests validate each generated
-transform against reference implementations (colour-science) at build
-time.
+This component's share of the verification loop is prediction. Every
+generation writes, beside the config, a predictions artifact and the
+probe patch imagery it describes: for each patch, the scene-linear
+content that produces it, the code values the config emits, and the CIE
+XYZ the wall is predicted to emit in cd/m². Sessions measure the
+patches; OLE-Toolset judges the residuals against the umbrella's
+thresholds (ΔE2000 ≤ 2 avg / ≤ 5 max, unity exponent). Analysis and
+reporting stay out of this component (§spec:non-goals) — a generator
+that graded its own output would be marking its own homework.
+
+Predictions come from the generated config's own transforms, run
+forward twice: scene reference → (display, view) for the code values,
+display colorspace → display reference for the colorimetry those code
+values produce. **Why not a second implementation:** an independent
+prediction path would drift from the config the runtime executes, and a
+disagreement between them would be indistinguishable from a wall fault.
+Tests hold the arrangement honest by reproducing the predictions with
+colour-science.
+
+Predictions target the default rendering (VP Radiometric): it is the
+one making a radiometric claim, so it is the one a measurement can
+falsify. The photographic view (§spec:view-transform) is verifiable
+only against its own tone scale.
+
+The probe set is fixed and documented rather than configurable — the
+artifact is a contract between three tools, and per-show patch lists
+would make sessions incomparable. Patches are stated as fractions of
+the wall's full linear drive, where a probe set is meaningful: the
+neutral ramp carries the radiometric claim and is spaced to sample the
+bottom of the range, chromatic axes at full drive sit on the measured
+gamut boundary and exercise the view's compressor, and half-drive and
+half-saturation variants sit in its untouched core.
+
+The artifact is bound to its config by sha256 (§spec:provenance) and
+re-emits byte for byte after parsing, so a consumer can rewrite it
+without perturbing the contract. Predictions are recorded at the
+precision the file states, so the in-memory prediction and the file are
+the same numbers. `--check-predictions` reports what a predictions file
+describes and refuses when the config it names is no longer the config
+on disk — measuring against predictions for a different config compares
+the wall to something it is not running.
+
+Probe imagery is one solid-color 16-bit PNG per patch, written against
+the format from the standard library. **Why not an image library:** the
+stored pixel must be exactly the code value the prediction was computed
+from, with no colorspace tag, gamma chunk, or encoder default able to
+reinterpret it. Predictions are computed from the quantized code value,
+so image and prediction agree exactly.
 
 ## Artifact provenance §spec:provenance
 
