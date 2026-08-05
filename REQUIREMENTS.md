@@ -9,7 +9,7 @@ constraints). This file scopes them to the generate layer.
 
 This component exists so that a measured characterization becomes a
 loadable OCIO config: media servers and render engines already speak
-OpenColorIO, and the correction must run in the renderer's
+OpenColorIO, and the correction shall run in the renderer's
 floating-point pipeline instead of the processor. The reference fleet
 context (pre-Dynacal SDR-only front ends, closed vendor math) is
 recorded in the umbrella.

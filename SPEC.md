@@ -92,7 +92,7 @@ surround compensation, and the encoding leg is transparent by
 construction (§spec:signal-contract, §spec:config-structure).
 
 **Why radiometric is the default:** in virtual production the wall is
-a light source being photographed. The camera must see the radiometry
+a light source being photographed. The camera shall see the radiometry
 the scene data specifies; photographic rendering belongs in the show's
 grade, not in the wall.
 
@@ -166,7 +166,7 @@ manifest and recorded in the output:
 
 **Why explicit:** the prior implementation applied a chromatic
 adaptation transform silently via library defaults. The choice is
-visible on camera and must be a recorded decision, not a side effect.
+visible on camera and shall be a recorded decision, not a side effect.
 
 ## Predictions §spec:verification
 
