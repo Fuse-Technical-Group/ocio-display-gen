@@ -21,7 +21,7 @@ import PyOpenColorIO as OCIO
 import pytest
 import yaml  # type: ignore[import]
 
-from conftest import SAMPLE_MANIFEST_PATH, make_characterization
+from conftest import SAMPLE_MANIFEST_PATH, load_sample_inputs
 from OCIODisplayGen import (
     D65_WHITE_XY,
     GENERATOR_VERSION,
@@ -32,6 +32,8 @@ from OCIODisplayGen import (
     DisplayCharacterization,
     PatchPrediction,
     build_predictions,
+    create_base_ocio_config,
+    create_characterization,
     create_display_colorspace_from_characterization,
     derive_reference_spaces,
     emit_predictions,
@@ -42,7 +44,7 @@ from OCIODisplayGen import (
     write_probe_imagery,
 )
 
-ACES2_STUDIO_CONFIG_URI = "ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5"
+# The nits anchor the shipped show manifest records.
 NITS_ANCHOR = 300.0
 
 # Umbrella verification thresholds (§spec:verification).
@@ -50,15 +52,26 @@ DELTA_E_AVG_LIMIT = 2.0
 DELTA_E_MAX_LIMIT = 5.0
 
 
+def generate_sample_config(path: Path) -> Tuple[str, DisplayCharacterization]:
+    """The shipped sample inputs through the real generation path,
+    serialized to path. Returns the registered display and its
+    characterization."""
+    manifest, measurements = load_sample_inputs()
+    assert manifest["ocio"]["vp_radiometric"]["nits_anchor"] == NITS_ANCHOR
+    char = create_characterization(manifest, measurements)
+    config = create_base_ocio_config(manifest)
+    cs = create_display_colorspace_from_characterization(char)
+    display = register_display(config, cs, char, nits_anchor=NITS_ANCHOR)
+    path.write_text(config.serialize(), encoding="utf-8")
+    return display, char
+
+
 @pytest.fixture(scope="module")
 def generated(tmp_path_factory: pytest.TempPathFactory) -> Tuple[Path, Any]:
     """The sample wall generated to disk, plus its predictions."""
-    config = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
-    char = make_characterization()
-    cs = create_display_colorspace_from_characterization(char)
-    display = register_display(config, cs, char, nits_anchor=NITS_ANCHOR)
     path = tmp_path_factory.mktemp("predictions") / "wall.ocio"
-    path.write_text(config.serialize(), encoding="utf-8")
+    display, char = generate_sample_config(path)
+    config = OCIO.Config.CreateFromFile(str(path))
     predictions = build_predictions(config, display, char, NITS_ANCHOR, str(path))
     return path, predictions
 
@@ -139,7 +152,8 @@ def test_predicted_xyz_matches_colour_science_display_model(
     """Every prediction states: drive the wall with these code values and
     it emits this XYZ. Reproduce that claim with colour-science."""
     _, predictions = generated
-    char = make_characterization()
+    manifest, measurements = load_sample_inputs()
+    char = create_characterization(manifest, measurements)
     matrix = wall_native_to_xyz_matrix(char)
     for patch in predictions.patches:
         linear = np.asarray(patch.code_value, dtype=np.float64) ** char.gamma_value
@@ -217,17 +231,19 @@ def test_predictions_reject_malformed_documents() -> None:
         parse_predictions(b"- just\n- a\n- list\n", "bogus.yaml")
 
 
-def test_predictions_are_byte_deterministic(generated: Tuple[Path, Any]) -> None:
-    config_path, _ = generated
-    char = make_characterization()
+def test_predictions_are_byte_deterministic(tmp_path: Path) -> None:
+    """Same inputs, same predictions bytes — the property the config
+    hash and the artifact chain both rest on (§spec:provenance)."""
     runs = []
-    for _ in range(2):
-        config = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
-        cs = create_display_colorspace_from_characterization(char)
-        display = register_display(config, cs, char, nits_anchor=NITS_ANCHOR)
+    for run in ("first", "second"):
+        directory = tmp_path / run
+        directory.mkdir()
+        path = directory / "wall.ocio"
+        display, char = generate_sample_config(path)
+        config = OCIO.Config.CreateFromFile(str(path))
         runs.append(
             emit_predictions(
-                build_predictions(config, display, char, NITS_ANCHOR, str(config_path))
+                build_predictions(config, display, char, NITS_ANCHOR, str(path))
             )
         )
     assert runs[0] == runs[1]
