@@ -175,7 +175,7 @@ visible on camera and must be a recorded decision, not a side effect.
 This component's share of the verification loop is prediction: for a
 given generated config, emit probe patch imagery and a documented,
 stable predictions file (config hash included per §spec:provenance) —
-the handoff contract consumed by color-wrangler sessions and judged by
+the handoff contract consumed by color-wrangler sessions and analyzed by
 OLE-Toolset against the umbrella's thresholds (ΔE2000 ≤ 2 avg / ≤ 5
 max, unity exponent). Round-trip unit tests validate each generated
 transform against reference implementations (colour-science) at build
@@ -203,6 +203,6 @@ serialized control characters or Unicode line separators.
 
 Umbrella non-goals apply. Additionally out of scope for this
 component: instrument and signal I/O of any kind (sessions own
-hardware), report rendering (OLE-Toolset owns verdicts), and multi-wall
+hardware), report rendering (OLE-Toolset owns validation reports), and multi-wall
 config merging (OCIO 2.5 config-merge is preview-status; revisit when
 stable).

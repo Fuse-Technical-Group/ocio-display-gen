@@ -25,8 +25,8 @@ recorded in the umbrella.
   readable in the generated config; nothing color-critical is
   delegated to closed processor modes.
 - Generated predictions match reference computation (colour-science)
-  within float tolerance; the umbrella's ΔE thresholds judge the
-  physical loop.
+  within float tolerance; the physical loop is validated against the
+  umbrella's ΔE thresholds.
 
 ## Quality attributes §req:quality-attributes
 

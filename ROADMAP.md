@@ -2,7 +2,7 @@
 
 Component roadmap for the generate layer of
 [color-wrangler](https://github.com/Fuse-Technical-Group/color-wrangler).
-Session and judge work live in the umbrella roadmap; this repo ships
+Session and validation work live in the umbrella roadmap; this repo ships
 predictions first (the verification handoff), then model refinement,
 then runtime back-compat, then documentation pruning.
 
