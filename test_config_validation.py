@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for split-input loading (decisions + measurements) and validation."""
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -124,7 +125,7 @@ def test_invalid_overflow_policy_fails_strict() -> None:
 
 
 def test_shipped_samples_produce_old_characterization() -> None:
-    decisions, measurements = load_inputs(str(SAMPLE_DECISIONS_PATH))
+    decisions, measurements, _ = load_inputs(str(SAMPLE_DECISIONS_PATH))
     char = create_characterization(decisions, measurements)
     assert char.name == "ROE Black Pearl 2 (NS) (2018) + Brompton S8 (3.5.2)"
     assert char.primaries == {
@@ -143,13 +144,13 @@ def test_shipped_samples_produce_old_characterization() -> None:
 
 
 def test_shipped_pointer_is_structurally_valid() -> None:
-    decisions, _ = load_inputs(str(SAMPLE_DECISIONS_PATH))
+    decisions, _, provenance = load_inputs(str(SAMPLE_DECISIONS_PATH))
     pointer = decisions["measurements"]
     assert set(pointer) >= {"file", "sha256"}
-    # sha256 hex digest of the artifact bytes (enforcement is
-    # §road:hash-binding, not this workstream).
-    assert len(pointer["sha256"]) == 64
-    int(pointer["sha256"], 16)
+    # sha256 hex digest of the artifact bytes, enforced at load
+    # (§spec:provenance) — load_inputs succeeding proves the shipped
+    # pointer hash matches the shipped artifact.
+    assert provenance.measurements_sha256 == pointer["sha256"]
 
 
 def test_missing_promotion_pointer_fails() -> None:
@@ -187,13 +188,17 @@ def test_artifact_path_resolved_relative_to_decisions_file(tmp_path: Path) -> No
     # resolve against the decisions file's own directory.
     show_dir = tmp_path / "show"
     (show_dir / "measurements").mkdir(parents=True)
+    artifact_path = show_dir / "measurements" / "artifact.yaml"
+    artifact_path.write_text(
+        yaml.safe_dump(make_measurements_dict()), encoding="utf-8"
+    )
     decisions = make_decisions_dict()
     decisions["measurements"]["file"] = "measurements/artifact.yaml"
+    decisions["measurements"]["sha256"] = hashlib.sha256(
+        artifact_path.read_bytes()
+    ).hexdigest()
     (show_dir / "decisions.yaml").write_text(
         yaml.safe_dump(decisions), encoding="utf-8"
     )
-    (show_dir / "measurements" / "artifact.yaml").write_text(
-        yaml.safe_dump(make_measurements_dict()), encoding="utf-8"
-    )
-    _, measurements = load_inputs(str(show_dir / "decisions.yaml"))
+    _, measurements, _ = load_inputs(str(show_dir / "decisions.yaml"))
     assert measurements["luminance"]["peak_luminance"] == PEAK_LUMINANCE

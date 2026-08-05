@@ -17,6 +17,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Hash binding (§spec:provenance): generation refuses when the
+  measurements artifact on disk does not hash to the promotion
+  pointer's recorded sha256 (or when the recorded digest is
+  malformed), naming the artifact and both hashes. The generated
+  config's top-level description records greppable `Provenance:` lines
+  — decisions sha256, measurements sha256, and generator version — and
+  the CLI prints them on success. Output stays byte-deterministic.
 - VP Radiometric view (default): configurable nits anchor
   (`ocio.vp_radiometric.nits_anchor`), ACES 2.0 gamut compression at the
   wall-gamut boundary, and a selectable above-peak overflow policy

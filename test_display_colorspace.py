@@ -189,7 +189,10 @@ def test_description_records_absolute_policy() -> None:
 
 def sample_inputs() -> tuple[dict, dict]:
     """Fresh parse of the shipped samples — each call returns new objects."""
-    return load_inputs(str(Path(__file__).parent / "decisions.yaml"))
+    decisions, measurements, _ = load_inputs(
+        str(Path(__file__).parent / "decisions.yaml")
+    )
+    return decisions, measurements
 
 
 def test_yaml_white_point_policy_parsed() -> None:

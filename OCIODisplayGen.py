@@ -4,9 +4,12 @@
 # It uses the colour-science library to create the colorspace and the PyOpenColorIO
 # library to create the OCIO config
 
+import hashlib
+import hmac
 import os
+import re
 import sys
-from typing import Any, Dict, Optional, Tuple, cast
+from typing import Any, Dict, NamedTuple, Optional, Tuple, cast
 
 import colour
 import numpy as np
@@ -702,6 +705,114 @@ def register_display(
 # promotion pointer names, consumed together.
 DECISIONS_FILE = "decisions.yaml"
 
+# Generator version recorded in provenance metadata (§spec:provenance).
+# A module constant kept equal to pyproject's [project] version — the
+# project is run as a script (`uv run ./OCIODisplayGen.py`), not
+# installed as a distribution, so importlib.metadata has no package to
+# query. test_provenance.py pins this to pyproject.toml.
+GENERATOR_VERSION = "0.1.0"
+
+# sha256 hex digest: 64 lowercase hex characters after normalization.
+SHA256_HEX_PATTERN = re.compile(r"[0-9a-f]{64}")
+
+
+class Provenance(NamedTuple):
+    """Input identities recorded in the generated config
+    (§spec:provenance). File paths are as written in the decisions
+    file / as given to the loader — never absolutized, so recorded
+    metadata stays byte-deterministic across checkouts."""
+
+    decisions_file: str
+    decisions_sha256: str
+    measurements_file: str
+    measurements_sha256: str
+
+
+def compute_file_sha256(path: str, role: str) -> str:
+    """
+    sha256 hex digest over a file's bytes (§spec:provenance).
+
+    Args:
+        path: File to hash
+        role: Human-readable role for error messages
+
+    Raises:
+        ValueError: For an unreadable file.
+    """
+    try:
+        with open(path, "rb") as f:
+            return hashlib.file_digest(f, "sha256").hexdigest()
+    except OSError as e:
+        raise ValueError(f"{role} '{path}' is not readable: {e}") from e
+
+
+def enforce_promotion_hash(
+    decisions: Dict[str, Any], decisions_path: str, artifact_path: str
+) -> Provenance:
+    """
+    Enforce the promotion pointer's recorded hash against the
+    measurements artifact on disk and hash both inputs
+    (§spec:provenance).
+
+    The recorded digest is case-normalized before comparison. The
+    comparison uses hmac.compare_digest as a cheap constant-time
+    habit; the threat model is error and drift, not adversaries.
+
+    Returns:
+        Provenance carrying both input hashes and the file paths as
+        written (pointer path for the artifact, loader path for the
+        decisions file).
+
+    Raises:
+        ValueError: For a malformed recorded digest, an unreadable
+            input, or a hash mismatch — the artifact is not the
+            measurement of record and generation must refuse.
+    """
+    pointer = decisions["measurements"]
+    pointer_file = str(pointer["file"])
+    recorded = str(pointer["sha256"]).lower()
+    if not SHA256_HEX_PATTERN.fullmatch(recorded):
+        raise ValueError(
+            f"Decisions file '{decisions_path}' promotion pointer sha256 "
+            f"'{pointer['sha256']}' is malformed — expected a 64-character "
+            f"hex sha256 digest of '{pointer_file}' (§spec:provenance)"
+        )
+    actual = compute_file_sha256(artifact_path, "Measurements artifact")
+    if not hmac.compare_digest(actual, recorded):
+        raise ValueError(
+            f"Measurements artifact '{pointer_file}' does not match the "
+            f"promotion pointer in '{decisions_path}': recorded sha256 "
+            f"{recorded}, actual sha256 {actual}. The artifact is not the "
+            f"measurement of record — refusing to generate "
+            f"(§spec:provenance)"
+        )
+    return Provenance(
+        decisions_file=decisions_path,
+        decisions_sha256=compute_file_sha256(decisions_path, "Decisions file"),
+        measurements_file=pointer_file,
+        measurements_sha256=actual,
+    )
+
+
+def provenance_description(provenance: Provenance) -> str:
+    """Greppable provenance lines for the config's top-level
+    description (§spec:provenance)."""
+    return (
+        f"Provenance: decisions sha256={provenance.decisions_sha256} "
+        f"({provenance.decisions_file})\n"
+        f"Provenance: measurements sha256={provenance.measurements_sha256} "
+        f"({provenance.measurements_file})\n"
+        f"Provenance: generator ociodisplaygen {GENERATOR_VERSION}"
+    )
+
+
+def record_provenance(config: "OCIO.Config", provenance: Provenance) -> None:
+    """Append provenance lines to the config's top-level description,
+    preserving the base config's own description (§spec:provenance)."""
+    base = config.getDescription().rstrip()
+    lines = provenance_description(provenance)
+    config.setDescription(f"{base}\n\n{lines}" if base else lines)
+
 
 def load_yaml_mapping(path: str, role: str) -> Dict[str, Any]:
     """
@@ -734,9 +845,9 @@ def resolve_measurements_pointer(decisions: Dict[str, Any], decisions_path: str)
     artifact of record (§spec:provenance).
 
     The pointer is `measurements: {file, sha256}`; `file` resolves
-    relative to the decisions file's directory. Hash *enforcement*
-    belongs to §road:hash-binding, not here — this only requires the
-    pointer to be structurally complete.
+    relative to the decisions file's directory. This only requires the
+    pointer to be structurally complete; hash enforcement is
+    enforce_promotion_hash.
 
     Returns:
         Absolute path to the measurements artifact.
@@ -763,21 +874,26 @@ def resolve_measurements_pointer(decisions: Dict[str, Any], decisions_path: str)
     )
 
 
-def load_inputs(decisions_path: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def load_inputs(
+    decisions_path: str,
+) -> Tuple[Dict[str, Any], Dict[str, Any], Provenance]:
     """
-    Load the decisions file and the measurements artifact it promotes.
+    Load the decisions file and the measurements artifact it promotes,
+    enforcing the promotion hash (§spec:provenance).
 
     Returns:
-        (decisions, measurements) mappings.
+        (decisions, measurements, provenance).
 
     Raises:
         ValueError: For an unreadable decisions file, a missing or
-            malformed promotion pointer, or an unreadable artifact.
+            malformed promotion pointer, an unreadable artifact, or a
+            promotion-hash mismatch.
     """
     decisions = load_yaml_mapping(decisions_path, "Decisions file")
     artifact_path = resolve_measurements_pointer(decisions, decisions_path)
+    provenance = enforce_promotion_hash(decisions, decisions_path, artifact_path)
     measurements = load_yaml_mapping(artifact_path, "Measurements artifact")
-    return decisions, measurements
+    return decisions, measurements, provenance
 
 
 def create_characterization(
@@ -1234,11 +1350,14 @@ def main():
     print("=== OCIO Display Generator ===")
     print(f"Loading decisions from '{DECISIONS_FILE}'...")
     try:
-        decisions, measurements = load_inputs(DECISIONS_FILE)
+        decisions, measurements, provenance = load_inputs(DECISIONS_FILE)
     except ValueError as e:
         print(f"❌ Error: {e}")
         sys.exit(1)
-    print(f"✓ Loaded measurements artifact '{decisions['measurements']['file']}'")
+    print(
+        f"✓ Loaded measurements artifact '{provenance.measurements_file}' "
+        f"(promotion hash verified)"
+    )
     print("Validating configuration data...")
     if not validate_inputs(decisions, measurements):
         print("❌ Configuration validation failed. Please check your inputs.")
@@ -1287,6 +1406,7 @@ def main():
             nits_anchor=nits_anchor,
             overflow_policy=overflow_policy,
         )
+        record_provenance(ocio_config_obj, provenance)
         try:
             ocio_config_obj.validate()
         except Exception as exc:
@@ -1297,6 +1417,9 @@ def main():
             f.write(ocio_config_obj.serialize())
         print("\n✅ Successfully created OCIO config!")
         print(f"   Output file: {output_config_path}")
+        print("\nProvenance recorded in the config description:")
+        for line in provenance_description(provenance).splitlines():
+            print(f"   {line}")
         print(f"\nRegistered display: {display_name}")
         default_view = ocio_config_obj.getDefaultView(display_name)
         for view in ocio_config_obj.getViews(display_name):
