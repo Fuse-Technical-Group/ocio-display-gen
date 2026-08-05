@@ -34,6 +34,17 @@ faithfully on an arbitrary measured display, verified by closed-loop
 measurement — while the display remains exactly as the manufacturer
 calibrated it.
 
+The scope is a workload, not an industry vertical: **real-time,
+unattended playback** (media servers, game engines), as distinct from
+DCC/offline color management where a human judges frames through a
+reference display. With no one in the loop, correctness is established
+before playback (verification) and held during it (signal contract,
+session gates). Virtual production, concerts, installations, and domes
+are instances of this one workload. The offline world stays connected
+through the config itself: the same file loads in grading DCCs, so the
+grade and the surface execute identical transforms — the config is the
+interchange contract between them.
+
 ## Characterization model §spec:characterization-model
 
 *Status: in progress*
