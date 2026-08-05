@@ -1,5 +1,5 @@
 """Shared test fixtures: sample-wall values from the shipped sample inputs
-(decisions.yaml + its promoted measurements artifact)."""
+(show_manifest.yaml + its promoted measurements artifact)."""
 
 from pathlib import Path
 from typing import Any
@@ -21,14 +21,14 @@ from OCIODisplayGen import (
 STUDIO_CONFIG_URI = "ocio://studio-config-v2.1.0_aces-v1.3_ocio-v2.3"
 ACES2_STUDIO_CONFIG_URI = "ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5"
 
-# The shipped sample inputs (decisions file + measurements artifact).
-SAMPLE_DECISIONS_PATH = Path(__file__).parent / "decisions.yaml"
+# The shipped sample inputs (show manifest + measurements artifact).
+SAMPLE_MANIFEST_PATH = Path(__file__).parent / "show_manifest.yaml"
 
 
 def load_sample_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
     """Fresh parse of the shipped samples — each call returns new objects."""
-    decisions, measurements, _ = load_inputs(str(SAMPLE_DECISIONS_PATH))
-    return decisions, measurements
+    manifest, measurements, _ = load_inputs(str(SAMPLE_MANIFEST_PATH))
+    return manifest, measurements
 
 # Sample wall measurements from the shipped measurements artifact
 WALL_PRIMARIES = np.array([[0.680, 0.320], [0.265, 0.690], [0.150, 0.060]])

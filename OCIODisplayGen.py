@@ -709,9 +709,9 @@ def register_display(
 
 
 # Input loading (§spec:characterization-model): a human-authored
-# decisions file plus the machine-format measurements artifact its
+# show manifest plus the machine-format measurements artifact its
 # promotion pointer names, consumed together.
-DECISIONS_FILE = "decisions.yaml"
+SHOW_MANIFEST_FILE = "show_manifest.yaml"
 
 # Generator version recorded in provenance metadata (§spec:provenance).
 # A module constant kept equal to pyproject's [project] version — the
@@ -747,21 +747,21 @@ def reject_control_characters(value: str, what: str) -> str:
 
 class Provenance(NamedTuple):
     """Input identities recorded in the generated config
-    (§spec:provenance). File paths are as written in the decisions
+    (§spec:provenance). File paths are as written in the show manifest's
     file / as given to the loader — never absolutized, so recorded
     metadata stays byte-deterministic across checkouts."""
 
-    decisions_file: str
-    decisions_sha256: str
+    show_manifest_file: str
+    show_manifest_sha256: str
     measurements_file: str
     measurements_sha256: str
 
 
 class PromotionPointer(NamedTuple):
-    """The decisions file's validated promotion pointer
+    """The show manifest's validated promotion pointer
     (§spec:provenance): artifact path as written, the recorded digest
     normalized to lowercase, and the path resolved against the
-    decisions file's directory."""
+    show manifest's directory."""
 
     file: str
     sha256: str
@@ -785,7 +785,7 @@ def read_file_bytes(path: str, role: str) -> bytes:
 
 
 def enforce_promotion_hash(
-    pointer: PromotionPointer, artifact_bytes: bytes, decisions_path: str
+    pointer: PromotionPointer, artifact_bytes: bytes, manifest_path: str
 ) -> str:
     """
     Enforce the promotion pointer's recorded hash over the artifact
@@ -804,7 +804,7 @@ def enforce_promotion_hash(
     if not hmac.compare_digest(actual, pointer.sha256):
         raise ValueError(
             f"Measurements artifact '{pointer.file}' does not match the "
-            f"promotion pointer in '{decisions_path}': recorded sha256 "
+            f"promotion pointer in '{manifest_path}': recorded sha256 "
             f"{pointer.sha256}, actual sha256 {actual}. The artifact is "
             f"not the measurement of record — refusing to generate "
             f"(§spec:provenance)"
@@ -816,8 +816,8 @@ def provenance_description(provenance: Provenance) -> str:
     """Greppable provenance lines for the config's top-level
     description (§spec:provenance)."""
     return (
-        f"Provenance: decisions sha256={provenance.decisions_sha256} "
-        f"({provenance.decisions_file})\n"
+        f"Provenance: show-manifest sha256={provenance.show_manifest_sha256} "
+        f"({provenance.show_manifest_file})\n"
         f"Provenance: measurements sha256={provenance.measurements_sha256} "
         f"({provenance.measurements_file})\n"
         f"Provenance: generator ociodisplaygen {GENERATOR_VERSION}"
@@ -854,7 +854,7 @@ def parse_yaml_mapping(data: bytes, path: str, role: str) -> Dict[str, Any]:
         data: File bytes (from read_file_bytes)
         path: Source path for error messages
         role: Human-readable role for error messages
-            (e.g. "Decisions file")
+            (e.g. "Show manifest")
 
     Raises:
         ValueError: For invalid YAML or content that is not a mapping.
@@ -869,14 +869,14 @@ def parse_yaml_mapping(data: bytes, path: str, role: str) -> Dict[str, Any]:
 
 
 def resolve_measurements_pointer(
-    decisions: Dict[str, Any], decisions_path: str
+    manifest: Dict[str, Any], manifest_path: str
 ) -> PromotionPointer:
     """
-    Validate the decisions file's promotion pointer and resolve it to
+    Validate the show manifest's promotion pointer and resolve it to
     the measurements artifact of record (§spec:provenance).
 
     The pointer is `measurements: {file, sha256}`; `file` resolves
-    relative to the decisions file's directory. This validates the
+    relative to the show manifest's directory. This validates the
     pointer's structure (keys present, well-formed digest); hash
     enforcement is enforce_promotion_hash.
 
@@ -884,31 +884,31 @@ def resolve_measurements_pointer(
         ValueError: For a missing pointer, missing pointer keys, or a
             malformed recorded digest.
     """
-    pointer = decisions.get("measurements")
+    pointer = manifest.get("measurements")
     if not isinstance(pointer, dict):
         raise ValueError(
-            f"Decisions file '{decisions_path}' has no 'measurements' "
+            f"Show manifest '{manifest_path}' has no 'measurements' "
             "promotion pointer — expected 'measurements: {file, sha256}' "
             "naming the measurements artifact of record (§spec:provenance)"
         )
     missing = [key for key in ("file", "sha256") if key not in pointer]
     if missing:
         raise ValueError(
-            f"Decisions file '{decisions_path}' promotion pointer is "
+            f"Show manifest '{manifest_path}' promotion pointer is "
             f"missing {', '.join(repr(key) for key in missing)} — expected "
             "'measurements: {file, sha256}' (§spec:provenance)"
         )
     pointer_file = str(pointer["file"])
     reject_control_characters(
-        pointer_file, f"Decisions file '{decisions_path}' promotion pointer file"
+        pointer_file, f"Show manifest '{manifest_path}' promotion pointer file"
     )
     # The pointer path is recorded verbatim in shipped config metadata:
     # absolute paths and traversal tie the audit trail to one machine's
     # directory layout and leak it into distributed configs.
     if os.path.isabs(pointer_file) or os.pardir in re.split(r"[\\/]", pointer_file):
         raise ValueError(
-            f"Decisions file '{decisions_path}' promotion pointer file "
-            f"'{pointer_file}' must be a relative path inside the decisions "
+            f"Show manifest '{manifest_path}' promotion pointer file "
+            f"'{pointer_file}' must be a relative path inside the show manifest's "
             f"file's directory (no absolute paths, no '..') — the pointer "
             f"is recorded in shipped config metadata and must stay "
             f"portable (§spec:provenance)"
@@ -916,7 +916,7 @@ def resolve_measurements_pointer(
     recorded_raw = pointer["sha256"]
     if not isinstance(recorded_raw, str):
         raise ValueError(
-            f"Decisions file '{decisions_path}' promotion pointer sha256 "
+            f"Show manifest '{manifest_path}' promotion pointer sha256 "
             f"must be a quoted string, got {type(recorded_raw).__name__} — "
             f"YAML parses an unquoted digit-only digest as a number, "
             f"corrupting it (§spec:provenance)"
@@ -924,7 +924,7 @@ def resolve_measurements_pointer(
     recorded = recorded_raw.lower()
     if not SHA256_HEX_PATTERN.fullmatch(recorded):
         raise ValueError(
-            f"Decisions file '{decisions_path}' promotion pointer sha256 "
+            f"Show manifest '{manifest_path}' promotion pointer sha256 "
             f"'{recorded_raw}' is malformed — expected a 64-character "
             f"hex sha256 digest of '{pointer_file}' (§spec:provenance)"
         )
@@ -932,56 +932,56 @@ def resolve_measurements_pointer(
         file=pointer_file,
         sha256=recorded,
         artifact_path=os.path.join(
-            os.path.dirname(os.path.abspath(decisions_path)), pointer_file
+            os.path.dirname(os.path.abspath(manifest_path)), pointer_file
         ),
     )
 
 
 def load_inputs(
-    decisions_path: str,
+    manifest_path: str,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Provenance]:
     """
-    Load the decisions file and the measurements artifact it promotes,
+    Load the show manifest and the measurements artifact it promotes,
     enforcing the promotion hash (§spec:provenance). Each file is read
     once; the bytes that are hashed are the bytes that are parsed.
 
     Returns:
-        (decisions, measurements, provenance).
+        (manifest, measurements, provenance).
 
     Raises:
-        ValueError: For an unreadable decisions file, a missing or
+        ValueError: For an unreadable show manifest, a missing or
             malformed promotion pointer, an unreadable artifact, or a
             promotion-hash mismatch.
     """
-    decisions_bytes = read_file_bytes(decisions_path, "Decisions file")
-    decisions = parse_yaml_mapping(decisions_bytes, decisions_path, "Decisions file")
-    pointer = resolve_measurements_pointer(decisions, decisions_path)
+    manifest_bytes = read_file_bytes(manifest_path, "Show manifest")
+    manifest = parse_yaml_mapping(manifest_bytes, manifest_path, "Show manifest")
+    pointer = resolve_measurements_pointer(manifest, manifest_path)
     artifact_bytes = read_file_bytes(pointer.artifact_path, "Measurements artifact")
     measurements_sha256 = enforce_promotion_hash(
-        pointer, artifact_bytes, decisions_path
+        pointer, artifact_bytes, manifest_path
     )
     measurements = parse_yaml_mapping(
         artifact_bytes, pointer.artifact_path, "Measurements artifact"
     )
     provenance = Provenance(
-        decisions_file=decisions_path,
-        decisions_sha256=hashlib.sha256(decisions_bytes).hexdigest(),
+        show_manifest_file=manifest_path,
+        show_manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
         measurements_file=pointer.file,
         measurements_sha256=measurements_sha256,
     )
-    return decisions, measurements, provenance
+    return manifest, measurements, provenance
 
 
 def create_characterization(
-    decisions: Dict[str, Any], measurements: Dict[str, Any]
+    manifest: Dict[str, Any], measurements: Dict[str, Any]
 ) -> DisplayCharacterization:
     """
     Build a DisplayCharacterization from the two inputs: measured
     values from the measurements artifact; naming, EOTF intent, white
-    point policy, and processor lockdown from the decisions file
+    point policy, and processor lockdown from the show manifest
     (§spec:characterization-model).
     """
-    show = decisions["show"]
+    show = manifest["show"]
 
     # Display name composes from panel and processor identity
     panel = show["led_panel"]
@@ -1019,9 +1019,9 @@ def create_characterization(
     # the lockdown state the config is valid for, distinct from the
     # artifact's processor_state snapshot (what was read at
     # measurement time).
-    contract = decisions.get("signal_contract")
+    contract = manifest.get("signal_contract")
     if not isinstance(contract, dict) or "eotf" not in contract:
-        raise ValueError("Decisions file must contain a 'signal_contract.eotf' section")
+        raise ValueError("Show manifest must contain a 'signal_contract.eotf' section")
     eotf = contract["eotf"]
     char.eotf_type = eotf["type"]
     char.gamma_value = eotf.get("gamma_value", 2.4)
@@ -1034,7 +1034,7 @@ def create_characterization(
 
     # White point policy is a generation decision, not a measurement, so
     # it lives under ocio:. Validated at matrix-build time.
-    char.white_point_policy = decisions.get("ocio", {}).get(
+    char.white_point_policy = manifest.get("ocio", {}).get(
         "white_point_policy", "adapted"
     )
     return char
@@ -1087,17 +1087,17 @@ def load_validation_settings() -> Dict[str, Any]:
     return validation_settings
 
 
-def validate_decisions_data(
-    decisions: Dict[str, Any],
+def validate_manifest_data(
+    manifest: Dict[str, Any],
     validation_config: Dict[str, Any],
     strict_mode: bool,
 ) -> bool:
     """
-    Validate the human decisions: policy enums and the intended
+    Validate the show manifest's human decisions: policy enums and the intended
     processor lockdown state (§spec:signal-contract). Plausibility of
     measured values belongs to validate_measurements_data.
     """
-    ocio_settings = decisions.get("ocio", {})
+    ocio_settings = manifest.get("ocio", {})
 
     # Policy enums (§spec:white-point, §spec:view-transform). Non-strict
     # mode only defers the failure: the transform builders raise on the
@@ -1134,7 +1134,7 @@ def validate_decisions_data(
     # config is only valid while the processor holds the recorded state,
     # so a missing record leaves nothing to restore or audit.
     if validation_config.get("check_processor_state", True):
-        contract = decisions.get("signal_contract", {})
+        contract = manifest.get("signal_contract", {})
         for field, meaning in (
             ("intensity", "locked processor intensity"),
             ("processing_disabled", "color processing / dynamic features state"),
@@ -1349,17 +1349,17 @@ def validate_measurements_data(
     return True
 
 
-def validate_inputs(decisions: Dict[str, Any], measurements: Dict[str, Any]) -> bool:
+def validate_inputs(manifest: Dict[str, Any], measurements: Dict[str, Any]) -> bool:
     """
     Validate both inputs along the human/machine line
-    (§spec:characterization-model): decisions checks against the
-    decisions file, plausibility checks against the measurements
-    artifact. Strict mode comes from the decisions file.
+    (§spec:characterization-model): manifest checks against the
+    show manifest, plausibility checks against the measurements
+    artifact. Strict mode comes from the show manifest.
     """
     validation_config = load_validation_settings()
-    strict_mode = decisions.get("validation", {}).get("strict_mode", False)
+    strict_mode = manifest.get("validation", {}).get("strict_mode", False)
 
-    if not validate_decisions_data(decisions, validation_config, strict_mode):
+    if not validate_manifest_data(manifest, validation_config, strict_mode):
         return False
     if not validate_measurements_data(measurements, validation_config, strict_mode):
         return False
@@ -1369,11 +1369,11 @@ def validate_inputs(decisions: Dict[str, Any], measurements: Dict[str, Any]) -> 
 
 
 def generate_output_filename(
-    decisions: Dict[str, Any], characterization: DisplayCharacterization
+    manifest: Dict[str, Any], characterization: DisplayCharacterization
 ) -> str:
-    """Generate output filename if not specified in the decisions file."""
+    """Generate output filename if not specified in the show manifest."""
 
-    ocio_config = decisions.get("ocio", {})
+    ocio_config = manifest.get("ocio", {})
 
     # Use specified output config if provided
     if "output_config" in ocio_config:
@@ -1384,10 +1384,10 @@ def generate_output_filename(
     return f"{display_name}_config.ocio"
 
 
-def create_base_ocio_config(decisions: Dict[str, Any]) -> "OCIO.Config":
+def create_base_ocio_config(manifest: Dict[str, Any]) -> "OCIO.Config":
     """Create base OCIO configuration using ocio:// scheme."""
 
-    base_config = decisions.get("ocio", {}).get("base_config", {})
+    base_config = manifest.get("ocio", {}).get("base_config", {})
     config_type = base_config.get("type", "studio")
     config_version = base_config.get("config_version", "v2.1.0")
     aces_version = base_config.get("aces_version", "v1.3")
@@ -1420,9 +1420,9 @@ def create_base_ocio_config(decisions: Dict[str, Any]) -> "OCIO.Config":
 
 def main():
     print("=== OCIO Display Generator ===")
-    print(f"Loading decisions from '{DECISIONS_FILE}'...")
+    print(f"Loading manifest from '{SHOW_MANIFEST_FILE}'...")
     try:
-        decisions, measurements, provenance = load_inputs(DECISIONS_FILE)
+        manifest, measurements, provenance = load_inputs(SHOW_MANIFEST_FILE)
     except ValueError as e:
         print(f"❌ Error: {e}")
         sys.exit(1)
@@ -1431,11 +1431,11 @@ def main():
         f"(promotion hash verified)"
     )
     print("Validating configuration data...")
-    if not validate_inputs(decisions, measurements):
+    if not validate_inputs(manifest, measurements):
         print("❌ Configuration validation failed. Please check your inputs.")
         sys.exit(1)
     print("Creating display characterization...")
-    characterization = create_characterization(decisions, measurements)
+    characterization = create_characterization(manifest, measurements)
     print(f"\nDisplay: {characterization.name}")
     print(f"Peak luminance: {characterization.peak_luminance} cd/m²")
     print(f"Black level: {characterization.black_level} cd/m²")
@@ -1453,7 +1453,7 @@ def main():
     print(f"White point policy: {characterization.white_point_policy}")
     # VP Radiometric settings are generation decisions, not measurements,
     # so they live under ocio: (§spec:view-transform).
-    vp_settings = decisions.get("ocio", {}).get("vp_radiometric", {})
+    vp_settings = manifest.get("ocio", {}).get("vp_radiometric", {})
     try:
         nits_anchor = float(vp_settings.get("nits_anchor", DEFAULT_NITS_ANCHOR))
     except (TypeError, ValueError):
@@ -1462,10 +1462,10 @@ def main():
     overflow_policy = vp_settings.get("overflow_policy", DEFAULT_OVERFLOW_POLICY)
     print(f"VP Radiometric nits anchor: {nits_anchor} cd/m²")
     print(f"VP Radiometric overflow policy: {overflow_policy}")
-    output_config_path = generate_output_filename(decisions, characterization)
+    output_config_path = generate_output_filename(manifest, characterization)
     try:
         print("\nCreating base OCIO config...")
-        ocio_config_obj = create_base_ocio_config(decisions)
+        ocio_config_obj = create_base_ocio_config(manifest)
         scene_reference, display_reference = derive_reference_spaces(ocio_config_obj)
         print(f"Scene reference space: {scene_reference}")
         print(f"Display reference space: {display_reference}")
@@ -1481,7 +1481,7 @@ def main():
         record_provenance(
             ocio_config_obj,
             provenance,
-            decisions.get("show", {}).get("description"),
+            manifest.get("show", {}).get("description"),
         )
         try:
             ocio_config_obj.validate()

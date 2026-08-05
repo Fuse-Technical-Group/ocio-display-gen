@@ -102,7 +102,7 @@ and that near-black output is finite-sloped.
 
 ### Target-runtime tier selection §road:tier-selection
 
-Add a target OCIO runtime option to the decisions file that selects
+Add a target OCIO runtime option to the show manifest that selects
 base config and caps the emitted profile version (2.5 and 2.4 tiers).
 §spec:version-targeting.
 

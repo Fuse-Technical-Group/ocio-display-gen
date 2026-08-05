@@ -186,16 +186,16 @@ def test_description_records_absolute_policy() -> None:
 
 
 def test_yaml_white_point_policy_parsed() -> None:
-    decisions, measurements = load_sample_inputs()
-    decisions["ocio"]["white_point_policy"] = "absolute"
-    char = create_characterization(decisions, measurements)
+    manifest, measurements = load_sample_inputs()
+    manifest["ocio"]["white_point_policy"] = "absolute"
+    char = create_characterization(manifest, measurements)
     assert char.white_point_policy == "absolute"
 
 
 def test_yaml_white_point_policy_defaults_to_adapted() -> None:
-    decisions, measurements = load_sample_inputs()
-    decisions["ocio"].pop("white_point_policy", None)
-    char = create_characterization(decisions, measurements)
+    manifest, measurements = load_sample_inputs()
+    manifest["ocio"].pop("white_point_policy", None)
+    char = create_characterization(manifest, measurements)
     assert char.white_point_policy == "adapted"
 
 
@@ -248,11 +248,11 @@ def test_yaml_processor_state_parsed() -> None:
 
 
 def test_yaml_processor_state_absent_is_none() -> None:
-    decisions, measurements = load_sample_inputs()
-    contract = decisions["signal_contract"]
+    manifest, measurements = load_sample_inputs()
+    contract = manifest["signal_contract"]
     contract.pop("intensity", None)
     contract.pop("processing_disabled", None)
-    char = create_characterization(decisions, measurements)
+    char = create_characterization(manifest, measurements)
     assert char.processor_intensity is None
     assert char.processor_processing_disabled is None
 
@@ -262,12 +262,12 @@ def test_yaml_processor_state_absent_is_none() -> None:
 
 
 def inputs_without_processor_state(strict_mode: bool) -> tuple[dict, dict]:
-    decisions, measurements = load_sample_inputs()
-    decisions["validation"]["strict_mode"] = strict_mode
-    contract = decisions["signal_contract"]
+    manifest, measurements = load_sample_inputs()
+    manifest["validation"]["strict_mode"] = strict_mode
+    contract = manifest["signal_contract"]
     contract.pop("intensity", None)
     contract.pop("processing_disabled", None)
-    return decisions, measurements
+    return manifest, measurements
 
 
 def test_validation_missing_processor_state_strict_fails() -> None:

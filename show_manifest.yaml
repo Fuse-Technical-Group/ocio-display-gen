@@ -1,4 +1,4 @@
-# DECISIONS FILE — human-authored and reviewed (§spec:characterization-model).
+# SHOW MANIFEST — human-authored and reviewed (§spec:characterization-model).
 # Holds only human decisions: show naming, the intended signal contract,
 # OCIO targeting, and the promotion pointer to the measurements artifact
 # of record. Measured values live in that artifact and are never edited
