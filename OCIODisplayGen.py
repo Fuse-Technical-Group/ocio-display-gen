@@ -723,6 +723,27 @@ GENERATOR_VERSION = "0.1.0"
 # sha256 hex digest: 64 lowercase hex characters after normalization.
 SHA256_HEX_PATTERN = re.compile(r"[0-9a-f]{64}")
 
+# Control characters (including newline) in values recorded verbatim in
+# the config description could forge or garble the greppable
+# Provenance: block.
+CONTROL_CHARS_PATTERN = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def reject_control_characters(value: str, what: str) -> str:
+    """
+    Refuse values destined for the generated config's description when
+    they contain control characters (§spec:provenance).
+
+    Raises:
+        ValueError: When value contains a control character.
+    """
+    if CONTROL_CHARS_PATTERN.search(value):
+        raise ValueError(
+            f"{what} must not contain control characters — it is recorded "
+            f"verbatim in the generated config's description"
+        )
+    return value
+
 
 class Provenance(NamedTuple):
     """Input identities recorded in the generated config
@@ -813,7 +834,13 @@ def record_provenance(
     own description (§spec:provenance)."""
     base = config.getDescription().rstrip()
     lines = provenance_description(provenance)
-    if show_description:
+    if show_description is not None:
+        if not isinstance(show_description, str):
+            raise ValueError(
+                f"Show description must be a string, got "
+                f"{type(show_description).__name__}"
+            )
+        reject_control_characters(show_description, "Show description")
         lines = f"Show: {show_description}\n{lines}"
     config.setDescription(f"{base}\n\n{lines}" if base else lines)
 
@@ -871,11 +898,33 @@ def resolve_measurements_pointer(
             "'measurements: {file, sha256}' (§spec:provenance)"
         )
     pointer_file = str(pointer["file"])
-    recorded = str(pointer["sha256"]).lower()
+    reject_control_characters(
+        pointer_file, f"Decisions file '{decisions_path}' promotion pointer file"
+    )
+    # The pointer path is recorded verbatim in shipped config metadata:
+    # absolute paths and traversal tie the audit trail to one machine's
+    # directory layout and leak it into distributed configs.
+    if os.path.isabs(pointer_file) or os.pardir in re.split(r"[\\/]", pointer_file):
+        raise ValueError(
+            f"Decisions file '{decisions_path}' promotion pointer file "
+            f"'{pointer_file}' must be a relative path inside the decisions "
+            f"file's directory (no absolute paths, no '..') — the pointer "
+            f"is recorded in shipped config metadata and must stay "
+            f"portable (§spec:provenance)"
+        )
+    recorded_raw = pointer["sha256"]
+    if not isinstance(recorded_raw, str):
+        raise ValueError(
+            f"Decisions file '{decisions_path}' promotion pointer sha256 "
+            f"must be a quoted string, got {type(recorded_raw).__name__} — "
+            f"YAML parses an unquoted digit-only digest as a number, "
+            f"corrupting it (§spec:provenance)"
+        )
+    recorded = recorded_raw.lower()
     if not SHA256_HEX_PATTERN.fullmatch(recorded):
         raise ValueError(
             f"Decisions file '{decisions_path}' promotion pointer sha256 "
-            f"'{pointer['sha256']}' is malformed — expected a 64-character "
+            f"'{recorded_raw}' is malformed — expected a 64-character "
             f"hex sha256 digest of '{pointer_file}' (§spec:provenance)"
         )
     return PromotionPointer(

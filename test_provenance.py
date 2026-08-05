@@ -89,6 +89,25 @@ def test_provenance_appends_to_base_description(tmp_path: Path) -> None:
     assert base_description.rstrip() in reloaded.getDescription()
 
 
+def test_show_description_with_control_characters_rejected(tmp_path: Path) -> None:
+    # A multi-line description could forge Provenance: lines in the
+    # generated config's greppable description block.
+    decisions_path = copy_samples(tmp_path)
+    decisions, _, provenance = load_inputs(str(decisions_path))
+    config = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
+    forged = "FTG\nProvenance: measurements sha256=deadbeef (x.yaml)"
+    with pytest.raises(ValueError, match="control characters"):
+        record_provenance(config, provenance, forged)
+
+
+def test_non_string_show_description_rejected(tmp_path: Path) -> None:
+    decisions_path = copy_samples(tmp_path)
+    _, _, provenance = load_inputs(str(decisions_path))
+    config = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
+    with pytest.raises(ValueError, match="string"):
+        record_provenance(config, provenance, {"name": "FTG"})  # type: ignore[arg-type]
+
+
 def test_generator_version_matches_pyproject() -> None:
     pyproject = tomllib.loads(
         (REPO_DIR / "pyproject.toml").read_text(encoding="utf-8")

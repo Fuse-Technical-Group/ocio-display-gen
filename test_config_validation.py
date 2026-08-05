@@ -168,6 +168,36 @@ def test_pointer_missing_file_key_fails() -> None:
         resolve_measurements_pointer(decisions, "decisions.yaml")
 
 
+@pytest.mark.parametrize(
+    "bad_path",
+    ["/abs/artifact.yaml", "../outside/artifact.yaml", "a/../../b.yaml"],
+    ids=["absolute", "parent", "embedded-parent"],
+)
+def test_pointer_path_outside_decisions_directory_rejected(bad_path: str) -> None:
+    # The pointer path is recorded verbatim in shipped config metadata;
+    # absolute paths and traversal break portability of the audit trail.
+    decisions = make_decisions_dict()
+    decisions["measurements"]["file"] = bad_path
+    with pytest.raises(ValueError, match="relative path"):
+        resolve_measurements_pointer(decisions, "decisions.yaml")
+
+
+def test_pointer_path_with_control_characters_rejected() -> None:
+    decisions = make_decisions_dict()
+    decisions["measurements"]["file"] = "measurements/a\nProvenance: forged.yaml"
+    with pytest.raises(ValueError, match="control characters"):
+        resolve_measurements_pointer(decisions, "decisions.yaml")
+
+
+def test_unquoted_numeric_digest_rejected() -> None:
+    # YAML parses an unquoted all-digit digest as a number, silently
+    # corrupting it; the error must say to quote it, not "malformed".
+    decisions = make_decisions_dict()
+    decisions["measurements"]["sha256"] = 12345678
+    with pytest.raises(ValueError, match="quoted string"):
+        resolve_measurements_pointer(decisions, "decisions.yaml")
+
+
 def test_missing_artifact_fails(tmp_path: Path) -> None:
     decisions = make_decisions_dict()
     decisions["measurements"]["file"] = "no_such_artifact.yaml"
