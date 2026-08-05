@@ -23,6 +23,7 @@ having an unknown algorithm in the display do the transformation.
 ### Option 1: Using Astral UV package management (Recommended)
 
 1. **Install UV** (if not already installed):
+
    ```bash
    # On Windows
    powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
@@ -32,6 +33,7 @@ having an unknown algorithm in the display do the transformation.
    ```
 
 2. **Install dependencies and create virtual environment**:
+
    ```bash
    uv sync
    ```
@@ -42,6 +44,7 @@ having an unknown algorithm in the display do the transformation.
    - `validation_settings.yaml` - Validation parameters (optional, uses defaults if missing)
 
 4. **Generate custom configuration**:
+
    ```bash
    uv run ./OCIODisplayGen.py
    ```
@@ -49,6 +52,7 @@ having an unknown algorithm in the display do the transformation.
 ### Option 2: Using Traditional pip Python package management
 
 1. **Install dependencies**:
+
    ```bash
    pip install -e .
    ```
@@ -59,6 +63,7 @@ having an unknown algorithm in the display do the transformation.
    - `validation_settings.yaml` - Validation parameters (optional, uses defaults if missing)
 
 3. **Generate custom configuration**:
+
    ```bash
    python OCIODisplayGen.py
    ```
@@ -66,7 +71,9 @@ having an unknown algorithm in the display do the transformation.
 ## Configuration Files
 
 ### Show manifest (`show_manifest.yaml`)
+
 Human-authored and reviewed. Contains:
+
 - Show naming (panel and processor identity)
 - Intended processor signal contract (EOTF, intensity, processing state)
 - Base OCIO configuration selection (type, versions)
@@ -76,6 +83,7 @@ Human-authored and reviewed. Contains:
   `measurements: {file, sha256}`
 
 ### Measurements artifact (`measurements/*.yaml`)
+
 Machine-written by a characterization session, immutable, never
 hand-edited (the shipped `measurements/ftg_stage1_20240115.yaml` is a
 hand-built sample). Contains measured primaries and white point, black
@@ -93,11 +101,13 @@ are a working example; see those files for the schema.
 The system loads base configurations using the `ocio://` scheme, which provides access to pre-built OCIO configurations:
 
 ### Configuration Types
+
 - **`studio`**: Studio workflow configuration (default)
 - **`aces`**: ACES-only configuration  
 - **`custom`**: Custom configuration
 
 ### Version Components
+
 - **`config_version`**: Configuration version (e.g., "v2.1.0", "v2.0.0")
 - **`aces_version`**: ACES version (e.g., "v1.3", "v1.2")
 - **`ocio_version`**: OCIO version (e.g., "v2.3", "v2.2")
@@ -105,11 +115,13 @@ The system loads base configurations using the `ocio://` scheme, which provides 
 ### Available Configurations
 
 The system constructs URLs in the format:
-```
+
+```text
 ocio://{type}-config-{config_version}_aces-{aces_version}_ocio-{ocio_version}
 ```
 
 Available base configurations:
+
 - **`ocio://studio-config-v2.1.0_aces-v1.3_ocio-2.3`** - Latest studio workflow
 - **`ocio://aces-config-v2.1.0_aces-v1.3_ocio-2.3`** - Latest ACES-only workflow
 
@@ -127,6 +139,7 @@ Available base configurations:
 ## Usage
 
 1. **Set OCIO environment variable**:
+
    ```bash
    # On Windows (PowerShell)
    $env:OCIO = "C:\path\to\your\custom_display_config.ocio"

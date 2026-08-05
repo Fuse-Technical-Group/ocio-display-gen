@@ -130,7 +130,7 @@ this as a hard compatibility requirement).
 Target tiers, selected in the show manifest:
 
 | Tier | Runtime | Basis | Rendering |
-|------|---------|-------|-----------|
+| ------ | --------- | ------- | ----------- |
 | 2.5 | Disguise r32.2+, current DCCs | ACES 2.0 studio config | All three views (§spec:view-transform) |
 | 2.4 | Disguise r29.1–r32.1 | ACES 1.3 studio config | VP Radiometric + ACES via 2.0 fixed functions (verify availability/naming per 2.4.x) |
 | ≤2.3 | Legacy runtimes | ACES 1.3 studio config | ACES view falls back to nearest ACES 1.3 HDR output (peak-nit variant); VP Radiometric degrades to colorimetric hard clip — no parameterized gamut compressor exists |
