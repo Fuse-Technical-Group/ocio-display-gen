@@ -1862,14 +1862,19 @@ def write_probe_imagery(directory: str, predictions: Predictions) -> List[str]:
     return written
 
 
+def _sibling_artifact(config_path: str, suffix: str) -> str:
+    """A handoff artifact beside a generated config, sharing its stem."""
+    return f"{os.path.splitext(config_path)[0]}{suffix}"
+
+
 def predictions_path(config_path: str) -> str:
     """The predictions artifact beside a generated config."""
-    return f"{os.path.splitext(config_path)[0]}{PREDICTIONS_SUFFIX}"
+    return _sibling_artifact(config_path, PREDICTIONS_SUFFIX)
 
 
 def probe_directory(config_path: str) -> str:
     """The probe imagery directory beside a generated config."""
-    return f"{os.path.splitext(config_path)[0]}{PROBE_DIR_SUFFIX}"
+    return _sibling_artifact(config_path, PROBE_DIR_SUFFIX)
 
 
 def check_predictions(path: str) -> None:
