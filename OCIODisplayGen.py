@@ -723,23 +723,23 @@ GENERATOR_VERSION = "0.1.0"
 # sha256 hex digest: 64 lowercase hex characters after normalization.
 SHA256_HEX_PATTERN = re.compile(r"[0-9a-f]{64}")
 
-# Control characters (including newline) in values recorded verbatim in
-# the config description could forge or garble the greppable
-# Provenance: block.
-CONTROL_CHARS_PATTERN = re.compile(r"[\x00-\x1f\x7f]")
-
-
 def reject_control_characters(value: str, what: str) -> str:
     """
     Refuse values destined for the generated config's description when
-    they contain control characters (§spec:provenance).
+    they contain unprintable characters (§spec:provenance). A newline —
+    or a Unicode line separator like U+2028, which OCIO's serializer
+    emits as a physical newline — could forge or garble the greppable
+    Provenance: block. str.isprintable() rejects all C0/C1 controls,
+    Unicode line/paragraph separators, and format characters
+    (including bidi overrides).
 
     Raises:
-        ValueError: When value contains a control character.
+        ValueError: When value contains an unprintable character.
     """
-    if CONTROL_CHARS_PATTERN.search(value):
+    if not value.isprintable():
         raise ValueError(
-            f"{what} must not contain control characters — it is recorded "
+            f"{what} must not contain unprintable characters (controls, "
+            f"line separators, format characters) — it is recorded "
             f"verbatim in the generated config's description"
         )
     return value
@@ -841,7 +841,8 @@ def record_provenance(
                 f"{type(show_description).__name__}"
             )
         reject_control_characters(show_description, "Show description")
-        lines = f"Show: {show_description}\n{lines}"
+        if show_description:
+            lines = f"Show: {show_description}\n{lines}"
     config.setDescription(f"{base}\n\n{lines}" if base else lines)
 
 

@@ -96,8 +96,30 @@ def test_show_description_with_control_characters_rejected(tmp_path: Path) -> No
     decisions, _, provenance = load_inputs(str(decisions_path))
     config = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
     forged = "FTG\nProvenance: measurements sha256=deadbeef (x.yaml)"
-    with pytest.raises(ValueError, match="control characters"):
+    with pytest.raises(ValueError, match="unprintable"):
         record_provenance(config, provenance, forged)
+
+
+def test_unicode_line_separator_in_show_description_rejected(
+    tmp_path: Path,
+) -> None:
+    # U+2028 LINE SEPARATOR is not in the C0/C1 ranges but OCIO's
+    # serializer emits it as a physical newline, forging a Provenance:
+    # line at column 0 in the raw .ocio file.
+    decisions_path = copy_samples(tmp_path)
+    _, _, provenance = load_inputs(str(decisions_path))
+    config = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
+    forged = "FTG Provenance: measurements sha256=deadbeef (x.yaml)"
+    with pytest.raises(ValueError, match="unprintable"):
+        record_provenance(config, provenance, forged)
+
+
+def test_empty_show_description_emits_no_show_line(tmp_path: Path) -> None:
+    decisions_path = copy_samples(tmp_path)
+    _, _, provenance = load_inputs(str(decisions_path))
+    config = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
+    record_provenance(config, provenance, "")
+    assert "Show:" not in config.getDescription()
 
 
 def test_non_string_show_description_rejected(tmp_path: Path) -> None:

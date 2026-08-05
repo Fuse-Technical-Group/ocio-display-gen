@@ -185,7 +185,7 @@ def test_pointer_path_outside_decisions_directory_rejected(bad_path: str) -> Non
 def test_pointer_path_with_control_characters_rejected() -> None:
     decisions = make_decisions_dict()
     decisions["measurements"]["file"] = "measurements/a\nProvenance: forged.yaml"
-    with pytest.raises(ValueError, match="control characters"):
+    with pytest.raises(ValueError, match="unprintable"):
         resolve_measurements_pointer(decisions, "decisions.yaml")
 
 
