@@ -31,6 +31,7 @@ from OCIODisplayGen import (
     REFERENCE_LUMINANCE,
     DisplayCharacterization,
     PatchPrediction,
+    _format_float,
     build_predictions,
     create_base_ocio_config,
     create_characterization,
@@ -222,6 +223,33 @@ def test_predictions_header_is_greppable(generated: Tuple[Path, Any]) -> None:
     assert document["view"] == predictions.view
     assert document["config"]["sha256"] == predictions.config_sha256
     assert len(document["patches"]) == len(PROBE_PATCHES)
+
+
+@pytest.mark.parametrize(
+    "value,text",
+    [
+        (0.0, "0.0"),
+        (-0.0, "0.0"),
+        (-1e-12, "0.0"),  # below recorded precision, and not "-0.0"
+        (10.0, "10.0"),  # trailing zeros stripped, integer part intact
+        (1000.0, "1000.0"),
+        (1e-9, "0.000000001"),  # no exponent: PyYAML would read it as text
+        (-3.25, "-3.25"),
+    ],
+)
+def test_recorded_floats_are_fixed_point(value: float, text: str) -> None:
+    """Float formatting carries the round-trip guarantee, and stripping
+    trailing zeros is easy to get wrong at the decimal point."""
+    assert _format_float(value) == text
+    assert isinstance(yaml.safe_load(f"value: {text}"), dict)
+    assert yaml.safe_load(f"value: {text}")["value"] == pytest.approx(value, abs=1e-9)
+
+
+def test_predictions_carry_no_exponent_notation(generated: Tuple[Path, Any]) -> None:
+    """PyYAML's core schema reads '1e-09' as a string, which would break
+    the artifact for every consumer."""
+    _, predictions = generated
+    assert "e-" not in emit_predictions(predictions).lower().split("patches:")[1]
 
 
 def test_predictions_reject_malformed_documents() -> None:
