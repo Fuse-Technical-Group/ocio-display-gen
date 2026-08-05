@@ -10,6 +10,7 @@ to do the job.
 """
 
 import hashlib
+import shutil
 import zlib
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -28,7 +29,6 @@ from OCIODisplayGen import (
     PREDICTIONS_SCHEMA,
     PROBE_PATCH_PIXELS,
     PROBE_PATCHES,
-    REFERENCE_LUMINANCE,
     DisplayCharacterization,
     PatchPrediction,
     _format_float,
@@ -179,18 +179,32 @@ def test_neutral_ramp_matches_colour_science_end_to_end(
         assert np.allclose(patch.xyz, expected, rtol=1e-3, atol=1e-3), patch.id
 
 
+def log_log_slope(pairs: List[Tuple[float, float]]) -> float:
+    """Fitted exponent relating the second value to the first."""
+    xs, ys = zip(*pairs)
+    return float(np.polyfit(np.log(xs), np.log(ys), 1)[0])
+
+
+def measurable_neutrals(
+    predictions: Tuple[PatchPrediction, ...],
+) -> Tuple[PatchPrediction, ...]:
+    """Ramp patches bright enough to fit a slope through — black and the
+    near-black steps carry no usable log-log signal."""
+    return tuple(
+        p for p in predictions if p.id.startswith("neutral_") and p.xyz[1] > 1.0
+    )
+
+
 def test_neutral_ramp_has_unity_system_gamma(generated: Tuple[Path, Any]) -> None:
     """Scene-linear light and on-wall light are proportional: the defining
     property of VP Radiometric (§spec:view-transform)."""
     _, predictions = generated
-    pairs = [
-        (p.scene_linear[1], p.xyz[1])
-        for p in predictions.patches
-        if p.id.startswith("neutral_") and p.xyz[1] > 1.0
-    ]
-    scene = np.array([s for s, _ in pairs])
-    on_wall = np.array([w for _, w in pairs])
-    exponent = float(np.polyfit(np.log(scene), np.log(on_wall), 1)[0])
+    exponent = log_log_slope(
+        [
+            (p.scene_linear[1], p.xyz[1])
+            for p in measurable_neutrals(predictions.patches)
+        ]
+    )
     assert exponent == pytest.approx(1.0, abs=1e-3)
 
 
@@ -260,9 +274,11 @@ def test_predictions_reject_malformed_documents() -> None:
         parse_predictions(b"- just\n- a\n- list\n", "bogus.yaml")
 
 
-def test_predictions_are_byte_deterministic(tmp_path: Path) -> None:
-    """Same inputs, same predictions bytes — the property the config
-    hash and the artifact chain both rest on (§spec:provenance)."""
+def test_handoff_artifacts_are_byte_deterministic(tmp_path: Path) -> None:
+    """Same inputs, same predictions and probe bytes — the property the
+    config hash and the artifact chain both rest on (§spec:provenance).
+    Both runs regenerate from scratch, so a nondeterministic encoder
+    (a timestamp chunk, unordered keys) fails here."""
     runs = []
     for run in ("first", "second"):
         directory = tmp_path / run
@@ -270,9 +286,11 @@ def test_predictions_are_byte_deterministic(tmp_path: Path) -> None:
         path = directory / "wall.ocio"
         display, char = generate_sample_config(path)
         config = OCIO.Config.CreateFromFile(str(path))
+        predictions = build_predictions(config, display, char, NITS_ANCHOR, str(path))
         runs.append(
-            emit_predictions(
-                build_predictions(config, display, char, NITS_ANCHOR, str(path))
+            (
+                emit_predictions(predictions),
+                [probe_patch_png(patch) for patch in predictions.patches],
             )
         )
     assert runs[0] == runs[1]
@@ -301,20 +319,21 @@ def delta_e2000(
     """Per-patch ΔE2000, referencing both sides to the predicted white."""
     white = next(p.xyz for p in predictions if p.id == "neutral_100")
     white_xyz = np.asarray(white, dtype=np.float64)
-    result = {}
-    for patch in predictions:
-        lab_predicted = colour.XYZ_to_Lab(
-            np.asarray(patch.xyz, dtype=np.float64) / white_xyz[1],
-            colour.XYZ_to_xy(white_xyz),
+    white_xy = colour.XYZ_to_xy(white_xyz)
+
+    def lab(xyz: List[float]) -> Any:
+        return colour.XYZ_to_Lab(
+            np.asarray(xyz, dtype=np.float64) / white_xyz[1], white_xy
         )
-        lab_measured = colour.XYZ_to_Lab(
-            np.asarray(measured[patch.id], dtype=np.float64) / white_xyz[1],
-            colour.XYZ_to_xy(white_xyz),
+
+    return {
+        patch.id: float(
+            colour.difference.delta_E_CIE2000(
+                lab(list(patch.xyz)), lab(measured[patch.id])
+            )
         )
-        result[patch.id] = float(
-            colour.difference.delta_E_CIE2000(lab_predicted, lab_measured)
-        )
-    return result
+        for patch in predictions
+    }
 
 
 def unity_exponent(
@@ -322,14 +341,9 @@ def unity_exponent(
 ) -> float:
     """Log-log slope of measured against predicted neutral luminance —
     1.0 when the wall tracks the prediction with no residual gamma."""
-    pairs = [
-        (p.xyz[1], measured[p.id][1])
-        for p in predictions
-        if p.id.startswith("neutral_") and p.xyz[1] > 1.0
-    ]
-    predicted_y = np.array([a for a, _ in pairs])
-    measured_y = np.array([b for _, b in pairs])
-    return float(np.polyfit(np.log(predicted_y), np.log(measured_y), 1)[0])
+    return log_log_slope(
+        [(p.xyz[1], measured[p.id][1]) for p in measurable_neutrals(predictions)]
+    )
 
 
 def test_perfect_wall_passes_the_umbrella_thresholds(
@@ -428,12 +442,6 @@ def test_probe_image_encodes_the_patch_code_value(
         assert pixel == tuple(round(c * 65535) for c in patch.code_value), patch.id
 
 
-def test_probe_images_are_byte_deterministic(generated: Tuple[Path, Any]) -> None:
-    _, predictions = generated
-    patch = predictions.patches[3]
-    assert probe_patch_png(patch) == probe_patch_png(patch)
-
-
 def test_write_probe_imagery_names_one_file_per_patch(
     generated: Tuple[Path, Any], tmp_path: Path
 ) -> None:
@@ -462,16 +470,24 @@ def copy_samples(tmp_path: Path) -> None:
         (tmp_path / name).write_bytes((repo / name).read_bytes())
 
 
-def test_cli_emits_predictions_and_probe_imagery(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    copy_samples(tmp_path)
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("sys.argv", ["OCIODisplayGen.py"])
-    main()
-    config = tmp_path / "custom_display_config.ocio"
-    predictions_path = tmp_path / "custom_display_config.predictions.yaml"
-    probe_dir = tmp_path / "custom_display_config.probe"
+@pytest.fixture(scope="module")
+def cli_output(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """One default CLI run of the shipped samples. Module-scoped: the run
+    loads and validates the ACES studio config, which every consuming
+    test would otherwise repeat. Copy it before mutating it."""
+    directory = tmp_path_factory.mktemp("cli")
+    copy_samples(directory)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.chdir(directory)
+        patch.setattr("sys.argv", ["OCIODisplayGen.py"])
+        main()
+    return directory
+
+
+def test_cli_emits_predictions_and_probe_imagery(cli_output: Path) -> None:
+    config = cli_output / "custom_display_config.ocio"
+    predictions_path = cli_output / "custom_display_config.predictions.yaml"
+    probe_dir = cli_output / "custom_display_config.probe"
     assert config.is_file()
     predictions = parse_predictions(
         predictions_path.read_bytes(), str(predictions_path)
@@ -482,12 +498,14 @@ def test_cli_emits_predictions_and_probe_imagery(
 
 
 def test_cli_checks_a_predictions_file_against_its_config(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    cli_output: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    copy_samples(tmp_path)
+    # Tampering below would poison the shared run, so work on a copy.
+    shutil.copytree(cli_output, tmp_path, dirs_exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("sys.argv", ["OCIODisplayGen.py"])
-    main()
     capsys.readouterr()
 
     monkeypatch.setattr(
@@ -527,4 +545,3 @@ def test_predicted_white_is_the_measured_peak(generated: Tuple[Path, Any]) -> No
     assert white.xyz[1] == pytest.approx(1000.0, rel=1e-3)
     xy = colour.XYZ_to_xy(np.asarray(white.xyz, dtype=np.float64))
     assert xy == pytest.approx(D65_WHITE_XY, abs=1e-3)
-    assert REFERENCE_LUMINANCE == 100.0
