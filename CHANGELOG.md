@@ -7,6 +7,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `OCIO_BUILTIN_TRANSFORMS.md` trimmed to its negative results and
+  pinned to PyOpenColorIO 2.5.1: which builtins do not exist, and that
+  the parameterized ACES 2.0 gamut compression the views use is a
+  `FixedFunctionTransform`, not a builtin. That distinction is the
+  evidence behind §spec:view-transform's "OCIO has no other builtin
+  gamut mapping".
+
+- README.md describes only what the tool emits: three fixed views, the
+  renderer/wall domain boundary, and the base configs that exist. The
+  advertised `ocio://aces-config-…` was never in OCIO's registry —
+  removed from the README and from the generator's error message, along
+  with the `aces`/`custom` base config types. `studio` and `cg` are the
+  real ones.
+
+- SPEC §spec:view-transform closes the view set at three. Adding or
+  replacing a rendering intent is an umbrella-priority decision, not a
+  local one.
+
+- ROADMAP puts §road:documentation-truth first: prose describing an
+  unimplemented pipeline misleads faster than it is read.
+
 - Governance demoted to component scope: system-level requirements,
   architecture, sessions, and verification policy migrated to the
   [color-wrangler umbrella](https://github.com/Fuse-Technical-Group/color-wrangler);
@@ -82,5 +103,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ROE Black Pearl 2 (NS)).
 
 ### Removed
+
+- `GAMUT_MAPPING_GUIDE.md`, `DISPLAY_CHARACTERIZATION.md`, and
+  `COLOR_PIPELINE_DOCUMENTATION.md`. They documented eight
+  `gamut_mapping:` strategies that never existed in OCIO or in this
+  tool, a `display_config.yaml`/`eotf_variants` schema that no longer
+  exists, and a stage-by-stage pipeline built on the removed naive
+  mapping helpers. Nothing in them was worth migrating: rendering
+  rationale is in SPEC.md §spec:view-transform and the measurement and
+  instrument story is the umbrella's. The renderer/wall domain boundary
+  survives as a corrected diagram in README.md.
 
 - Dead `viewing_conditions` plumbing on `DisplayCharacterization`.

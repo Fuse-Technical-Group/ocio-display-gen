@@ -108,6 +108,10 @@ radiometric nowhere — correct for pictures, wrong for light sources.
 **Colorimetric (no rendering).** Bare display colorspace with hard
 clip, for measurement and verification work.
 
+The set is closed at these three: adding or replacing a view shall be
+an umbrella-priority decision, never a local judgment call — sessions
+and reports treat the view set as a contract.
+
 **Why ACES 2.0 components:** the parameterized output transform and
 standalone gamut compressor are the only widely deployed,
 runtime-supported transforms parameterized by arbitrary primaries and

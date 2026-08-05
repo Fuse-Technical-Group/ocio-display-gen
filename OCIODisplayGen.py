@@ -2019,7 +2019,6 @@ def create_base_ocio_config(manifest: Dict[str, Any]) -> "OCIO.Config":
         print("   Available configurations:")
         print("     - ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5")
         print("     - ocio://studio-config-v2.1.0_aces-v1.3_ocio-v2.3")
-        print("     - ocio://aces-config-v2.1.0_aces-v1.3_ocio-v2.3")
         print("   Please check your configuration parameters.")
         raise
 

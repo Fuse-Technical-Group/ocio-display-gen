@@ -64,6 +64,7 @@ recorded in the umbrella.
 
 ## Priorities §req:priorities
 
-Umbrella priorities govern. Within this component: predictions (the
-verification handoff) first, then measured per-channel response, then
-version tiers, then documentation pruning — matching ROADMAP.md order.
+Umbrella priorities govern. Within this component: documentation truth
+first, then measured per-channel response, then version tiers —
+matching ROADMAP.md order. Predictions (the verification handoff) have
+shipped.

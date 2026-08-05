@@ -4,19 +4,45 @@ The **generate layer** of [color-wrangler](https://github.com/Fuse-Technical-Gro
 
 A tool for creating and appending[^1] custom display colorspaces to existing OpenColorIO (OCIO) configurations, using measured display data including custom primaries, white point, luminance, and EOTF characteristics.
 
-The goal is of this system is to have the renderer or compositor handle
-the color transformation to the display's native gamut, rather than
-having an unknown algorithm in the display do the transformation.
+The goal of this system is to have the renderer or compositor handle the
+color transformation to the display's native gamut, rather than having
+an unknown algorithm in the display do the transformation.
 
-## Features
+## Where the boundary is
 
-- **Display Characterization**: Create colorspaces from measured display data
-- **Single EOTF Support**: PQ, HLG, or Gamma EOTF based on measured display response
-- **Advanced Gamut Mapping**: Multiple strategies for handling out-of-gamut colors
-- **YAML Configuration**: Easy-to-edit YAML configuration files
-- **Validation**: Comprehensive validation of display measurements
-- **Flexible Validation**: External validation settings file automatically loaded by scripts
-- **Base Config Selection**: Load OCIO configurations using the `ocio://` scheme with structured version selection
+Everything left of the wire is the generated config, in float. The wall
+applies its own EOTF and its own primaries; the config's job is to land
+the code values that make those produce the intended light.
+
+```mermaid
+flowchart TD
+    subgraph renderer["Renderer / media server — the generated config"]
+        A["Scene-linear<br/>ACES2065-1"] --> B["View transform<br/>nits anchor, ACES 2.0 gamut compression"]
+        B --> C["Display reference<br/>CIE-XYZ-D65"]
+        C --> D["Display colorspace<br/>XYZ to native RGB, absolute luminance, inverse EOTF"]
+        D --> E["Code values on the wire"]
+    end
+
+    subgraph wall["Wall — processor and panel, locked by the signal contract"]
+        E --> F["Processor EOTF"]
+        F --> G["Measured native primaries"]
+        G --> H["Light"]
+    end
+```
+
+The inverse EOTF and the processor's EOTF are inverses by construction,
+which holds only while the processor stays in the state the manifest
+records — see [SPEC.md](SPEC.md) §spec:signal-contract.
+
+## What it emits
+
+For one measured wall, a single self-contained `.ocio` file registering
+that wall as a named display with three selectable views — VP
+Radiometric (default), ACES 2.0, and Colorimetric — plus the
+verification artifacts below. The views are fixed: out-of-gamut and
+above-peak handling is a property of the view the operator picks, not a
+configurable strategy. Rationale in [SPEC.md](SPEC.md)
+§spec:view-transform.
 
 ## Quick Start
 
@@ -129,14 +155,13 @@ The system loads base configurations using the `ocio://` scheme, which provides 
 ### Configuration Types
 
 - **`studio`**: Studio workflow configuration (default)
-- **`aces`**: ACES-only configuration  
-- **`custom`**: Custom configuration
+- **`cg`**: CG workflow configuration
 
 ### Version Components
 
-- **`config_version`**: Configuration version (e.g., "v2.1.0", "v2.0.0")
-- **`aces_version`**: ACES version (e.g., "v1.3", "v1.2")
-- **`ocio_version`**: OCIO version (e.g., "v2.3", "v2.2")
+- **`config_version`**: Configuration version (e.g., "v4.0.0", "v2.1.0")
+- **`aces_version`**: ACES version (e.g., "v2.0", "v1.3")
+- **`ocio_version`**: OCIO version (e.g., "v2.5", "v2.3")
 
 ### Available Configurations
 
@@ -146,21 +171,23 @@ The system constructs URLs in the format:
 ocio://{type}-config-{config_version}_aces-{aces_version}_ocio-{ocio_version}
 ```
 
-Available base configurations:
+OCIO 2.5.1 carries eight builtin configs — `studio-config` and
+`cg-config`, each in v1.0.0, v2.1.0, v2.2.0, and v4.0.0. The two this
+project targets:
 
-- **`ocio://studio-config-v2.1.0_aces-v1.3_ocio-2.3`** - Latest studio workflow
-- **`ocio://aces-config-v2.1.0_aces-v1.3_ocio-2.3`** - Latest ACES-only workflow
+- **`ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5`** — ACES 2.0
+  studio workflow; the shipped sample default
+- **`ocio://studio-config-v2.1.0_aces-v1.3_ocio-v2.3`** — ACES 1.3
+  studio workflow
 
-## Gamut Mapping Strategies
+The ACES 2.0 views need a config profile of at least 2.4; generation
+fails loud on a base config that cannot hold them. To enumerate the
+registry for a different OCIO version:
 
-- **`clip`**: Hard clipping at gamut boundary
-- **`perceptual`**: Perceptual gamut mapping (preserves relationships)
-- **`saturation`**: Saturation-preserving mapping
-- **`relative`**: Relative colorimetric mapping
-- **`absolute`**: Absolute colorimetric mapping
-- **`soft_clip`**: Roll-off approach preserving response through most of gamut
-- **`adaptive`**: Content-aware adaptive mapping
-- **`hue_preserving`**: Hue-preserving mapping with saturation compression
+```python
+import PyOpenColorIO as OCIO
+print(list(OCIO.BuiltinConfigRegistry()))
+```
 
 ## Usage
 
@@ -174,20 +201,30 @@ Available base configurations:
    export OCIO=/path/to/your/custom_display_config.ocio
    ```
 
-2. **Select display colorspace in your application**:
-   - Use the generated display colorspace for your measured display
+2. **Select the wall as your display**:
+   - The generated display carries the show's panel and processor
+     identity as its name; pick the view for the job — VP Radiometric
+     for plates, ACES 2.0 for finished content, Colorimetric for
+     measurement.
 
 ## Documentation
 
-- [Display Characterization Guide](DISPLAY_CHARACTERIZATION.md) - Detailed setup and usage
-- [Gamut Mapping Guide](GAMUT_MAPPING_GUIDE.md) - Gamut mapping strategies explained
+- [SPEC.md](SPEC.md) — what this component generates and why: the
+  colorspace/view split, the rendering intents, white point policy,
+  predictions, provenance
+- [REQUIREMENTS.md](REQUIREMENTS.md) and [ROADMAP.md](ROADMAP.md) —
+  scope and what is still open
+- [OCIO_BUILTIN_TRANSFORMS.md](OCIO_BUILTIN_TRANSFORMS.md) — builtin
+  transforms that do not exist, pinned to a checked OCIO version
+- [color-wrangler](https://github.com/Fuse-Technical-Group/color-wrangler)
+  — the system: architecture, measurement sessions, verification policy
 
 ## Requirements
 
-- Python 3.8+
-- PyOpenColorIO
-- colour-science
-- PyYAML (for YAML configuration)
+- Python 3.11+
+- PyOpenColorIO 2.5.1+
+- colour-science 0.4.6+
+- PyYAML 6.0+
 
 ## License
 
