@@ -182,14 +182,18 @@ thresholds (ΔE2000 ≤ 2 avg / ≤ 5 max, unity exponent). Analysis and
 reporting stay out of this component (§spec:non-goals) — a generator
 that graded its own output would be marking its own homework.
 
-Predictions come from the generated config's own transforms, run
-forward twice: scene reference → (display, view) for the code values,
-display colorspace → display reference for the colorimetry those code
-values produce. **Why not a second implementation:** an independent
-prediction path would drift from the config the runtime executes, and a
-disagreement between them would be indistinguishable from a wall fault.
-Tests hold the arrangement honest by reproducing the predictions with
-colour-science.
+Predictions come from the generated config's own transforms. Each patch
+runs forward twice — scene reference → (display, view) for the code
+values, display colorspace → display reference for the colorimetry
+those code values produce — and the drive-space patch is inverted back
+to the content that produces it through the config's display-reference
+→ scene-reference leg and the same drive-space matrix the rendering
+uses. **Why not a second implementation:** an independent prediction
+path would drift from the config the runtime executes, and a
+disagreement between them would be indistinguishable from a wall fault;
+it would also have to assume a scene reference the config derives
+(§spec:config-structure). Tests hold the arrangement honest by
+reproducing the predictions with colour-science.
 
 Predictions target the default rendering (VP Radiometric): it is the
 one making a radiometric claim, so it is the one a measurement can
