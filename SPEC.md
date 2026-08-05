@@ -21,6 +21,30 @@ Throughout these documents, "wall" is industry shorthand for any LED
 surface — walls, ceilings, floors, domes, and other geometries. Nothing
 in the system is orientation- or geometry-specific.
 
+**What this is, in established terms:** color management, not
+calibration. Calibration adjusts a device to conform to a standard;
+this system never touches the device. It *characterizes* the device
+(measures what it is), expresses the characterization as a profile
+(the OCIO display colorspace), and transforms content upstream through
+selectable rendering intents (the views) — the ICC architecture,
+carried by OCIO instead of ICC profiles, applied to devices no
+broadcast standard describes. The correctness claim is therefore about
+*reproduction*, not conformance: scene-referred content is reproduced
+faithfully on an arbitrary measured display, verified by closed-loop
+measurement — while the display remains exactly as the manufacturer
+calibrated it.
+
+The scope is a workload, not an industry vertical: **real-time,
+unattended playback** (media servers, game engines), as distinct from
+DCC/offline color management where a human judges frames through a
+reference display. With no one in the loop, correctness is established
+before playback (verification) and held during it (signal contract,
+session gates). Virtual production, concerts, installations, and domes
+are instances of this one workload. The offline world stays connected
+through the config itself: the same file loads in grading DCCs, so the
+grade and the surface execute identical transforms — the config is the
+interchange contract between them.
+
 ## Characterization model §spec:characterization-model
 
 *Status: in progress*
@@ -284,9 +308,13 @@ instrument aimed. Sessions come in two modes over one shared core
   pre-show drift checks routine (§req:user-stories).
 
 **Ownership split:** session tooling (both modes — everything that
-touches hardware) lives in a sibling repository with a
-surface-register name, depending on bmd-signal-gen, colour-specio,
-and the Tessera read-only client. This repository keeps everything
+touches hardware) lives in a sibling repository named **Stilb** (the
+CGS unit of luminance: the product is measured light, and the CLI
+users type is `stilb characterize` / `stilb verify`), depending on
+bmd-signal-gen, colour-specio, and the Tessera read-only client.
+Stilb is also the umbrella name for the whole workflow —
+*characterization-based color management for real-time playback on
+LED surfaces* — of which this repository is the generator component. This repository keeps everything
 that needs OCIO semantics and no hardware: generation, prediction,
 and the ΔE report. The seam at every stage is a file
 (§spec:provenance). **Why:** characterize and verify share the
