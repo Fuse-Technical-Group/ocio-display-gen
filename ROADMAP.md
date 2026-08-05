@@ -1,37 +1,10 @@
 # ocio-display-gen — Roadmap
 
-## Version tiers §road:version-tiers
-
-### Target-runtime tier selection §road:tier-selection
-
-Add a target OCIO runtime option to `display_config.yaml` that selects
-base config and caps the emitted profile version (2.5 and 2.4 tiers).
-§spec:version-targeting. Depends on §road:aces2-view-transform.
-
-### Legacy ≤2.3 tier §road:legacy-23-tier
-
-Emit the ≤2.3 fallback: nearest ACES 1.3 HDR output view plus the
-display colorspace, with documented gamut-delta clipping.
-§spec:version-targeting. Depends on §road:tier-selection.
-
-**Verify:** Generate one config per tier from the same measurements.
-Validate each with the matching PyOpenColorIO library version
-(`Config.validate()`, profile version check) and confirm the 2.5 and
-2.4 outputs render identically for in-gamut test values.
-
-## Measured response §road:measured-response
-
-### Per-channel measured EOTF §road:measured-eotf-lut
-
-Accept measured per-channel response ramps in `display_config.yaml` and
-emit a fitted 1D LUT in place of the ideal EOTF curve, including
-near-black (BT.1886-style) handling for gamma displays.
-§spec:characterization-model. Depends on §road:display-colorspace-emit.
-
-**Verify:** Provide a synthetic measured ramp deviating from pure gamma
-2.4; confirm the generated config reproduces the measured response
-within tolerance where an ideal-gamma config demonstrably does not,
-and that near-black output is finite-sloped.
+Sections run the walking skeleton to closed-loop measurement first:
+provenance underpins the artifact chain, the harness makes accuracy
+checkable, and sessions make it measurable. Runtime back-compat
+(version tiers) and model refinement (measured response) follow once
+the loop exists to judge them.
 
 ## Artifact provenance §road:artifact-provenance
 
@@ -61,8 +34,7 @@ the promotion hash catches it.
 ### Probe patches and predictions §road:probe-patches
 
 Generate probe patch imagery with predicted on-wall XYZ values for a
-given generated config. §spec:verification. Depends on
-§road:vp-radiometric-view.
+given generated config. §spec:verification.
 
 ### ΔE report §road:delta-e-report
 
@@ -135,6 +107,39 @@ generating a config succeeds end-to-end. With real hardware
 (wall + CR-300): complete a full characterize → promote → generate →
 verify cycle and confirm the report matches a manually measured
 spot-check patch.
+
+## Measured response §road:measured-response
+
+### Per-channel measured EOTF §road:measured-eotf-lut
+
+Accept measured per-channel response ramps in the measurements
+artifact and emit a fitted 1D LUT in place of the ideal EOTF curve,
+including near-black (BT.1886-style) handling for gamma displays.
+§spec:characterization-model.
+
+**Verify:** Provide a synthetic measured ramp deviating from pure gamma
+2.4; confirm the generated config reproduces the measured response
+within tolerance where an ideal-gamma config demonstrably does not,
+and that near-black output is finite-sloped.
+
+## Version tiers §road:version-tiers
+
+### Target-runtime tier selection §road:tier-selection
+
+Add a target OCIO runtime option to the decisions file that selects
+base config and caps the emitted profile version (2.5 and 2.4 tiers).
+§spec:version-targeting.
+
+### Legacy ≤2.3 tier §road:legacy-23-tier
+
+Emit the ≤2.3 fallback: nearest ACES 1.3 HDR output view plus the
+display colorspace, with documented gamut-delta clipping.
+§spec:version-targeting. Depends on §road:tier-selection.
+
+**Verify:** Generate one config per tier from the same measurements.
+Validate each with the matching PyOpenColorIO library version
+(`Config.validate()`, profile version check) and confirm the 2.5 and
+2.4 outputs render identically for in-gamut test values.
 
 ## Documentation truth §road:documentation-truth
 

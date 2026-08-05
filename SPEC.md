@@ -21,6 +21,19 @@ Throughout these documents, "wall" is industry shorthand for any LED
 surface — walls, ceilings, floors, domes, and other geometries. Nothing
 in the system is orientation- or geometry-specific.
 
+**What this is, in established terms:** color management, not
+calibration. Calibration adjusts a device to conform to a standard;
+this system never touches the device. It *characterizes* the device
+(measures what it is), expresses the characterization as a profile
+(the OCIO display colorspace), and transforms content upstream through
+selectable rendering intents (the views) — the ICC architecture,
+carried by OCIO instead of ICC profiles, applied to devices no
+broadcast standard describes. The correctness claim is therefore about
+*reproduction*, not conformance: scene-referred content is reproduced
+faithfully on an arbitrary measured display, verified by closed-loop
+measurement — while the display remains exactly as the manufacturer
+calibrated it.
+
 ## Characterization model §spec:characterization-model
 
 *Status: in progress*
