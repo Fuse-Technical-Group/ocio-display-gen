@@ -287,27 +287,48 @@ def tampered_predictions(generated: Tuple[Path, Any], **fields: str) -> bytes:
     return yaml.safe_dump(document).encode("utf-8")
 
 
-@pytest.mark.parametrize(
-    "config_file",
-    [
-        "../victim.ocio",
-        "../../etc/passwd",
-        "/etc/passwd",
-        "sub/dir/wall.ocio",
-        "..\\victim.ocio",
-    ],
-)
+ESCAPING_NAMES = [
+    "../victim.ocio",
+    "../../etc/passwd",
+    "/etc/passwd",
+    "sub/dir/wall.ocio",
+    "..\\victim.ocio",  # a separator on NT, an ordinary character on POSIX
+    "C:victim.ocio",  # drive-relative: ntpath.join discards the base
+    "C:\\victim.ocio",
+    ".",
+    "..",
+    "",
+]
+
+
+@pytest.mark.parametrize("config_file", ESCAPING_NAMES)
 def test_predictions_refuse_a_config_outside_their_own_directory(
     generated: Tuple[Path, Any], config_file: str
 ) -> None:
     """The artifact attests that the config beside it is the config it
-    describes. A traversing or absolute name would let a supplied file
-    point the hash check at an unrelated config — passing verification
-    while carrying forged patch values — and report the digest of any
-    readable file (§spec:provenance)."""
+    describes. A traversing, absolute, or drive-relative name would let a
+    supplied file point the hash check at an unrelated config — passing
+    verification while carrying forged patch values — and report the
+    digest of any readable file (§spec:provenance)."""
     data = tampered_predictions(generated, config_file=config_file)
-    with pytest.raises(ValueError, match="must name a file beside it"):
+    with pytest.raises(ValueError, match="is not a bare filename"):
         parse_predictions(data, "wall.predictions.yaml")
+
+
+@pytest.mark.parametrize("patch_id", ESCAPING_NAMES)
+def test_predictions_refuse_patch_ids_that_are_not_filenames(
+    generated: Tuple[Path, Any], patch_id: str
+) -> None:
+    """Ids name the probe image beside the artifact and key the
+    measurement file a session writes back, so every tool in the handoff
+    joins them to a directory."""
+    _, predictions = generated
+    document = yaml.safe_load(emit_predictions(predictions))
+    document["patches"][0]["id"] = patch_id
+    with pytest.raises(ValueError, match="is not a bare filename"):
+        parse_predictions(
+            yaml.safe_dump(document).encode("utf-8"), "wall.predictions.yaml"
+        )
 
 
 @pytest.mark.parametrize(
@@ -327,10 +348,10 @@ def test_predictions_refuse_unprintable_strings(
 
 
 def test_predictions_refuse_unprintable_patch_ids(generated: Tuple[Path, Any]) -> None:
-    """Patch ids name the probe image files written to disk."""
+    """Patch ids are printed and named on disk like the other strings."""
     _, predictions = generated
     document = yaml.safe_load(emit_predictions(predictions))
-    document["patches"][0]["id"] = "../escaped\n"
+    document["patches"][0]["id"] = "neutral_100\n   ✓ forged"
     with pytest.raises(ValueError, match="unprintable"):
         parse_predictions(
             yaml.safe_dump(document).encode("utf-8"), "wall.predictions.yaml"

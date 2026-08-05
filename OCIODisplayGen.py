@@ -7,7 +7,9 @@
 import argparse
 import hashlib
 import hmac
+import ntpath
 import os
+import posixpath
 import re
 import struct
 import sys
@@ -1742,6 +1744,36 @@ def _require_string(document: Dict[str, Any], key: str, path: str) -> str:
     return reject_control_characters(value, f"Predictions '{path}' key '{key}'")
 
 
+def _require_bare_filename(value: str, what: str) -> str:
+    """A name from a parsed artifact that will be joined to a directory.
+
+    The artifact crosses machines, so a name that escapes its directory
+    on any platform is malformed on every platform: both path flavors
+    are checked, which catches the backslash POSIX would treat as an
+    ordinary character and the drive letter that makes an NT join
+    discard the base entirely ('C:x'). '.' and '..' name a directory
+    rather than a file and are refused too, so the invariant is exactly
+    'a file beside the artifact'.
+
+    Raises:
+        ValueError: When value is not a bare filename.
+    """
+    contained = value and value not in (os.curdir, os.pardir)
+    for flavor in (posixpath, ntpath):
+        contained = (
+            contained
+            and not flavor.splitdrive(value)[0]
+            and flavor.basename(value) == value
+        )
+    if not contained:
+        raise ValueError(
+            f"{what} '{value}' is not a bare filename — it must name a "
+            f"file beside the artifact, with no directory, drive, or "
+            f"parent component (§spec:provenance)"
+        )
+    return value
+
+
 def _parse_triple(
     raw: Any, path: str, patch_id: str, field: str
 ) -> Tuple[float, float, float]:
@@ -1784,7 +1816,12 @@ def parse_predictions(data: bytes, path: str) -> Predictions:
     for entry in raw_patches:
         if not isinstance(entry, dict):
             raise ValueError(f"Predictions '{path}' patch entries must be mappings")
-        patch_id = _require_string(entry, "id", path)
+        # Ids key the measurement file a session writes back and name
+        # the probe image beside it, so they are filenames in every tool
+        # that reads this artifact, not only in this one.
+        patch_id = _require_bare_filename(
+            _require_string(entry, "id", path), f"Predictions '{path}' patch id"
+        )
         patches.append(
             PatchPrediction(
                 id=patch_id,
@@ -1813,16 +1850,9 @@ def parse_predictions(data: bytes, path: str) -> Predictions:
     # artifact could aim the hash check at an unrelated trusted config
     # and pass while carrying forged patch values, or report the digest
     # of any readable file.
-    # Backslash counts as a separator here even on POSIX: the artifact
-    # crosses machines, and a name that traverses on the reader's
-    # platform is malformed on every platform.
-    config_file = _require_string(config, "file", path)
-    if not config_file or len(re.split(r"[\\/]", config_file)) > 1:
-        raise ValueError(
-            f"Predictions '{path}' name a config '{config_file}' outside "
-            f"their own directory — a predictions file must name a file "
-            f"beside it, with no directory component (§spec:provenance)"
-        )
+    config_file = _require_bare_filename(
+        _require_string(config, "file", path), f"Predictions '{path}' config file"
+    )
     return Predictions(
         config_file=config_file,
         config_sha256=recorded_sha256,
