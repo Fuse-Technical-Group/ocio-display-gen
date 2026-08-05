@@ -1728,10 +1728,18 @@ def emit_predictions(predictions: Predictions) -> str:
 
 
 def _require_string(document: Dict[str, Any], key: str, path: str) -> str:
+    """A string field from a parsed predictions artifact.
+
+    Unprintable characters are refused on the way in for the same reason
+    the emit side refuses them: check_predictions prints these fields to
+    the operator as a trust signal, and a newline or ANSI escape in a
+    supplied artifact could forge the verdict being read
+    (§spec:provenance).
+    """
     value = document.get(key)
     if not isinstance(value, str):
         raise ValueError(f"Predictions '{path}' key '{key}' must be a string")
-    return value
+    return reject_control_characters(value, f"Predictions '{path}' key '{key}'")
 
 
 def _parse_triple(
@@ -1799,8 +1807,24 @@ def parse_predictions(data: bytes, path: str) -> Predictions:
             f"malformed — expected a 64-character hex sha256 digest "
             f"(§spec:provenance)"
         )
+    # The artifact attests that the config sitting beside it is the one
+    # it describes, so the recorded name is a bare filename — the same
+    # containment the promotion pointer enforces. Without it a supplied
+    # artifact could aim the hash check at an unrelated trusted config
+    # and pass while carrying forged patch values, or report the digest
+    # of any readable file.
+    # Backslash counts as a separator here even on POSIX: the artifact
+    # crosses machines, and a name that traverses on the reader's
+    # platform is malformed on every platform.
+    config_file = _require_string(config, "file", path)
+    if not config_file or len(re.split(r"[\\/]", config_file)) > 1:
+        raise ValueError(
+            f"Predictions '{path}' name a config '{config_file}' outside "
+            f"their own directory — a predictions file must name a file "
+            f"beside it, with no directory component (§spec:provenance)"
+        )
     return Predictions(
-        config_file=_require_string(config, "file", path),
+        config_file=config_file,
         config_sha256=recorded_sha256,
         display=_require_string(document, "display", path),
         view=_require_string(document, "view", path),

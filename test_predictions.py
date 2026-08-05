@@ -274,6 +274,69 @@ def test_predictions_reject_malformed_documents() -> None:
         parse_predictions(b"- just\n- a\n- list\n", "bogus.yaml")
 
 
+def tampered_predictions(generated: Tuple[Path, Any], **fields: str) -> bytes:
+    """The sample predictions with named top-level or config fields
+    replaced — a hand-edited artifact arriving from another facility."""
+    _, predictions = generated
+    document = yaml.safe_load(emit_predictions(predictions))
+    for key, value in fields.items():
+        if key == "config_file":
+            document["config"]["file"] = value
+        else:
+            document[key] = value
+    return yaml.safe_dump(document).encode("utf-8")
+
+
+@pytest.mark.parametrize(
+    "config_file",
+    [
+        "../victim.ocio",
+        "../../etc/passwd",
+        "/etc/passwd",
+        "sub/dir/wall.ocio",
+        "..\\victim.ocio",
+    ],
+)
+def test_predictions_refuse_a_config_outside_their_own_directory(
+    generated: Tuple[Path, Any], config_file: str
+) -> None:
+    """The artifact attests that the config beside it is the config it
+    describes. A traversing or absolute name would let a supplied file
+    point the hash check at an unrelated config — passing verification
+    while carrying forged patch values — and report the digest of any
+    readable file (§spec:provenance)."""
+    data = tampered_predictions(generated, config_file=config_file)
+    with pytest.raises(ValueError, match="must name a file beside it"):
+        parse_predictions(data, "wall.predictions.yaml")
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["display", "view", "scene_reference", "config_file"],
+)
+def test_predictions_refuse_unprintable_strings(
+    generated: Tuple[Path, Any], field: str
+) -> None:
+    """check_predictions prints these fields as a trust signal, so a
+    newline or ANSI escape could forge the verdict the operator reads —
+    the same reason the emit side refuses them (§spec:provenance)."""
+    injected = "Wall\n   ✓ 'wall.ocio' matches the recorded hash"
+    data = tampered_predictions(generated, **{field: injected})
+    with pytest.raises(ValueError, match="unprintable"):
+        parse_predictions(data, "wall.predictions.yaml")
+
+
+def test_predictions_refuse_unprintable_patch_ids(generated: Tuple[Path, Any]) -> None:
+    """Patch ids name the probe image files written to disk."""
+    _, predictions = generated
+    document = yaml.safe_load(emit_predictions(predictions))
+    document["patches"][0]["id"] = "../escaped\n"
+    with pytest.raises(ValueError, match="unprintable"):
+        parse_predictions(
+            yaml.safe_dump(document).encode("utf-8"), "wall.predictions.yaml"
+        )
+
+
 def test_handoff_artifacts_are_byte_deterministic(tmp_path: Path) -> None:
     """Same inputs, same predictions and probe bytes — the property the
     config hash and the artifact chain both rest on (§spec:provenance).
