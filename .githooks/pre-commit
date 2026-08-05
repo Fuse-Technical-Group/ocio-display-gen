@@ -3,6 +3,35 @@ set -euo pipefail
 
 # Only lint when governance files are staged
 staged=$(git diff --cached --name-only)
-if echo "$staged" | grep -qE '^(SPEC|ROADMAP|README)\.md$'; then
-  npx markdownlint-cli2 SPEC.md ROADMAP.md README.md
+if ! echo "$staged" | grep -qE '^(SPEC|ROADMAP|README)\.md$'; then
+  exit 0
 fi
+
+# Git hooks run with a minimal PATH — they do not inherit an interactive
+# shell, so version-manager shims (nvm, fnm, volta) are absent and a bare
+# `npx` fails even when node is installed. Look in the usual places.
+if ! command -v npx >/dev/null 2>&1; then
+  for dir in \
+    "$HOME"/.nvm/versions/node/*/bin \
+    "$HOME"/.volta/bin \
+    "$HOME"/.local/share/fnm/node-versions/*/installation/bin \
+    /opt/homebrew/bin \
+    /usr/local/bin
+  do
+    if [ -x "${dir}/npx" ]; then
+      PATH="${dir}:${PATH}"
+      export PATH
+      break
+    fi
+  done
+fi
+
+# No node available: skip rather than block. CI runs the same check and is
+# the authority — refusing the commit would punish a contributor with no node
+# toolchain for a repo that does not otherwise need one.
+if ! command -v npx >/dev/null 2>&1; then
+  echo "pre-commit: npx not found, skipping markdownlint (CI still enforces it)" >&2
+  exit 0
+fi
+
+npx markdownlint-cli2 SPEC.md ROADMAP.md README.md
