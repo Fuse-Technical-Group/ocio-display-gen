@@ -220,7 +220,7 @@ the wall to something it is not running.
 
 Probe imagery is one solid-color 16-bit PNG per patch, written against
 the format from the standard library. **Why not an image library:** the
-stored pixel must be exactly the code value the prediction was computed
+stored pixel shall be exactly the code value the prediction was computed
 from, with no colorspace tag, gamma chunk, or encoder default able to
 reinterpret it. Predictions are computed from the quantized code value,
 so image and prediction agree exactly.
