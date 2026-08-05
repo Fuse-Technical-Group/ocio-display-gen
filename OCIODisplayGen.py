@@ -787,6 +787,15 @@ def read_file_bytes(path: str, role: str) -> bytes:
         raise ValueError(f"{role} '{path}' is not readable: {e}") from e
 
 
+def file_sha256(path: str, role: str) -> str:
+    """The sha256 hex digest of a file's bytes (§spec:provenance).
+
+    Raises:
+        ValueError: When the file is unreadable.
+    """
+    return hashlib.sha256(read_file_bytes(path, role)).hexdigest()
+
+
 def enforce_promotion_hash(
     pointer: PromotionPointer, artifact_bytes: bytes, manifest_path: str
 ) -> str:
@@ -1628,9 +1637,7 @@ def build_predictions(
     scene_reference, _ = derive_reference_spaces(config)
     return Predictions(
         config_file=os.path.basename(config_path),
-        config_sha256=hashlib.sha256(
-            read_file_bytes(config_path, "Generated config")
-        ).hexdigest(),
+        config_sha256=file_sha256(config_path, "Generated config"),
         display=display,
         view=view,
         scene_reference=scene_reference,
@@ -1773,9 +1780,19 @@ def parse_predictions(data: bytes, path: str) -> Predictions:
                 xyz=_parse_triple(entry.get("xyz"), path, patch_id, "xyz"),
             )
         )
+    # Normalized and shape-checked exactly as the promotion pointer's
+    # digest is: an uppercase or truncated digest is a malformed file,
+    # not a config that fails to match.
+    recorded_sha256 = _require_string(config, "sha256", path).lower()
+    if not SHA256_HEX_PATTERN.fullmatch(recorded_sha256):
+        raise ValueError(
+            f"Predictions '{path}' config sha256 '{recorded_sha256}' is "
+            f"malformed — expected a 64-character hex sha256 digest "
+            f"(§spec:provenance)"
+        )
     return Predictions(
         config_file=_require_string(config, "file", path),
-        config_sha256=_require_string(config, "sha256", path),
+        config_sha256=recorded_sha256,
         display=_require_string(document, "display", path),
         view=_require_string(document, "view", path),
         scene_reference=_require_string(document, "scene_reference", path),
@@ -1877,9 +1894,7 @@ def check_predictions(path: str) -> None:
     config_path = os.path.join(
         os.path.dirname(os.path.abspath(path)), predictions.config_file
     )
-    actual = hashlib.sha256(
-        read_file_bytes(config_path, "Generated config")
-    ).hexdigest()
+    actual = file_sha256(config_path, "Generated config")
     if not hmac.compare_digest(actual, predictions.config_sha256):
         raise ValueError(
             f"Config '{predictions.config_file}' does not match these "
