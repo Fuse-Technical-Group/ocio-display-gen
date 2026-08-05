@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Governance demoted to component scope: system-level requirements,
+  architecture, sessions, and verification policy migrated to the
+  [color-wrangler umbrella](https://github.com/Fuse-Technical-Group/color-wrangler);
+  SPEC/REQUIREMENTS/ROADMAP here now cover the generate layer only.
+
 - `display_config.yaml` split into `decisions.yaml` (human decisions:
   show naming, intended signal contract, OCIO targeting, validation
   mode) and a machine-format measurements artifact

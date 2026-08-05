@@ -1,5 +1,7 @@
 # OCIO Custom Display Configuration Generator
 
+The **generate layer** of [color-wrangler](https://github.com/Fuse-Technical-Group/color-wrangler) — characterization-based color management for real-time playback on LED surfaces. System architecture, measurement sessions, and verification policy live in the umbrella; this repo turns measurements into OCIO configs.
+
 A tool for creating and appending[^1] custom display colorspaces to existing OpenColorIO (OCIO) configurations, using measured display data including custom primaries, white point, luminance, and EOTF characteristics.
 
 The goal is of this system is to have the renderer or compositor handle
