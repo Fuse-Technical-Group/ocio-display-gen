@@ -12,6 +12,10 @@ wheels/
 # OCIO configs
 *.ocio
 
+# Verification handoff (generated beside the config)
+*.predictions.yaml
+*.probe/
+
 # macOS nonsense
 .DS_Store
 

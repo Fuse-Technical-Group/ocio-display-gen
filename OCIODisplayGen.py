@@ -4,12 +4,17 @@
 # It uses the colour-science library to create the colorspace and the PyOpenColorIO
 # library to create the OCIO config
 
+import argparse
 import hashlib
 import hmac
+import ntpath
 import os
+import posixpath
 import re
+import struct
 import sys
-from typing import Any, Dict, NamedTuple, Optional, Tuple, cast
+import zlib
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple, cast
 
 import colour
 import numpy as np
@@ -140,7 +145,6 @@ class DisplayCharacterization:
         self.contrast_ratio = 1000.0  # Measured contrast ratio
         self.eotf_type = "PQ"  # Display EOTF type: "PQ", "HLG", "GAMMA"
         self.gamma_value = 2.4  # For gamma-based EOTF (display property)
-        self.measured_response: Optional[str] = None  # Custom measured response curve
         self.white_point_policy = "adapted"  # "adapted" or "absolute"
         # Processor state the config is valid for (§spec:signal-contract):
         # locked intensity (free-form: percent or nits as configured) and
@@ -426,6 +430,28 @@ def _shoulder_overflow_transform() -> OCIO.LogCameraTransform:
     )
 
 
+def _drive_space_matrix(
+    characterization: DisplayCharacterization,
+    chromatic_adaptation_transform: str,
+) -> npt.NDArray[np.float64]:
+    """Display-reference XYZ → wall drive space, where 1.0 is full
+    drive.
+
+    The VP Radiometric view and the probe predictor's inverse are the
+    same matrix by construction: predictions describe the rendering the
+    config performs only while both sides agree, and nothing else would
+    catch them diverging — the full-drive patches would quietly stop
+    landing on the measured gamut boundary.
+    """
+    return np.asarray(
+        np.diag([REFERENCE_LUMINANCE / characterization.peak_luminance] * 3 + [1.0])
+        @ create_display_xyz_to_native_matrix(
+            characterization, chromatic_adaptation_transform
+        ),
+        dtype=np.float64,
+    )
+
+
 def create_vp_radiometric_view_transform(
     characterization: DisplayCharacterization,
     nits_anchor: float,
@@ -525,11 +551,7 @@ def create_vp_radiometric_view_transform(
     # Stage 4: into drive space — wall native RGB where 1.0 = full
     # drive. Reuses the display colorspace's exact policy matrix so the
     # view and colorspace compose transparently.
-    drive = np.diag(
-        [REFERENCE_LUMINANCE / peak] * 3 + [1.0]
-    ) @ create_display_xyz_to_native_matrix(
-        characterization, chromatic_adaptation_transform
-    )
+    drive = _drive_space_matrix(characterization, chromatic_adaptation_transform)
     group.appendTransform(_matrix_transform(drive))
 
     # Stage 5: above-peak overflow policy, per channel in drive space.
@@ -723,6 +745,7 @@ GENERATOR_VERSION = "0.1.0"
 # sha256 hex digest: 64 lowercase hex characters after normalization.
 SHA256_HEX_PATTERN = re.compile(r"[0-9a-f]{64}")
 
+
 def reject_control_characters(value: str, what: str) -> str:
     """
     Refuse values destined for the generated config's description when
@@ -782,6 +805,15 @@ def read_file_bytes(path: str, role: str) -> bytes:
             return f.read()
     except OSError as e:
         raise ValueError(f"{role} '{path}' is not readable: {e}") from e
+
+
+def file_sha256(path: str, role: str) -> str:
+    """The sha256 hex digest of a file's bytes (§spec:provenance).
+
+    Raises:
+        ValueError: When the file is unreadable.
+    """
+    return hashlib.sha256(read_file_bytes(path, role)).hexdigest()
 
 
 def enforce_promotion_hash(
@@ -957,9 +989,7 @@ def load_inputs(
     manifest = parse_yaml_mapping(manifest_bytes, manifest_path, "Show manifest")
     pointer = resolve_measurements_pointer(manifest, manifest_path)
     artifact_bytes = read_file_bytes(pointer.artifact_path, "Measurements artifact")
-    measurements_sha256 = enforce_promotion_hash(
-        pointer, artifact_bytes, manifest_path
-    )
+    measurements_sha256 = enforce_promotion_hash(pointer, artifact_bytes, manifest_path)
     measurements = parse_yaml_mapping(
         artifact_bytes, pointer.artifact_path, "Measurements artifact"
     )
@@ -1368,6 +1398,582 @@ def validate_inputs(manifest: Dict[str, Any], measurements: Dict[str, Any]) -> b
     return True
 
 
+# Verification handoff (§spec:verification): probe patches, their
+# predicted on-wall colorimetry, and the artifact that carries both to
+# color-wrangler sessions and OLE-Toolset. Analysis of measurements
+# against these predictions belongs to OLE-Toolset (§spec:non-goals);
+# this component only states what the wall should do.
+
+# Artifact identity. The trailing version moves when the shape changes,
+# so a consumer can refuse a file it does not understand.
+PREDICTIONS_SCHEMA = "ociodisplaygen/predictions/1"
+PREDICTIONS_SUFFIX = ".predictions.yaml"
+PROBE_DIR_SUFFIX = ".probe"
+
+# Probe imagery: one solid-color 16-bit PNG per patch. Predictions are
+# computed from the quantized code value, so the image the wall is
+# driven with and the prediction agree exactly; 16 bits puts that
+# quantization far below any instrument's repeatability.
+PROBE_PATCH_PIXELS = 256
+PROBE_CODE_LEVELS = 65535
+
+# Recorded precision. Nine decimals sits below any instrument's
+# resolution at these magnitudes and short of the exponent notation
+# PyYAML's core schema will not read back as a number. Predictions are
+# rounded to it as they are built, so the in-memory prediction and the
+# artifact are the same numbers — the artifact is the contract.
+PREDICTIONS_DECIMALS = 9
+
+# The probe set, stated as fractions of the wall's full linear drive.
+# Fixed and documented rather than configurable: the predictions file is
+# a contract between three tools, and a per-show patch list would make
+# every session's results incomparable.
+#
+# The neutral ramp carries the radiometric claim — predicted and
+# measured luminance must track with unity exponent (§spec:view-transform)
+# — and is spaced to sample the bottom of the range, where display
+# response deviates most. The chromatic axes at full drive sit on the
+# measured gamut boundary, exercising the view's gamut compressor; at
+# half drive and half saturation they sit in its untouched core.
+NEUTRAL_RAMP_DRIVE = (0.0, 0.02, 0.05, 0.1, 0.2, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0)
+CHROMATIC_AXES = (
+    ("red", (1.0, 0.0, 0.0)),
+    ("green", (0.0, 1.0, 0.0)),
+    ("blue", (0.0, 0.0, 1.0)),
+    ("cyan", (0.0, 1.0, 1.0)),
+    ("magenta", (1.0, 0.0, 1.0)),
+    ("yellow", (1.0, 1.0, 0.0)),
+)
+CHROMATIC_DRIVE_LEVELS = (1.0, 0.5)
+DESATURATED_DRIVE = 0.5
+DESATURATED_BLEND = 0.5
+
+
+class ProbePatch(NamedTuple):
+    """A probe patch as a fraction of the wall's full linear drive."""
+
+    id: str
+    drive: Tuple[float, float, float]
+
+
+class PatchPrediction(NamedTuple):
+    """One patch's prediction: the scene-linear content that produces
+    it, the code values the config emits for that content (quantized to
+    the probe imagery's grid), and the XYZ the wall is predicted to
+    emit, in cd/m²."""
+
+    id: str
+    scene_linear: Tuple[float, float, float]
+    code_value: Tuple[float, float, float]
+    xyz: Tuple[float, float, float]
+
+
+class Predictions(NamedTuple):
+    """The verification contract for one generated config: what the
+    config is, which rendering the predictions are for, and the patches
+    (§spec:verification). The config's sha256 binds the two — a
+    predictions file is meaningless without the config it describes
+    (§spec:provenance)."""
+
+    config_file: str
+    config_sha256: str
+    display: str
+    view: str
+    scene_reference: str
+    patches: Tuple[PatchPrediction, ...]
+
+
+def _triple(values: Any) -> Tuple[float, float, float]:
+    """Three floats as a fixed-width tuple."""
+    first, second, third = (float(value) for value in values)
+    return (first, second, third)
+
+
+def _recorded_triple(values: Any) -> Tuple[float, float, float]:
+    """Three floats at the artifact's recorded precision."""
+    return _triple(round(float(value), PREDICTIONS_DECIMALS) for value in values)
+
+
+def _probe_patch_set() -> Tuple[ProbePatch, ...]:
+    """The probe set in emission order: neutral ramp, chromatic axes at
+    each drive level, then the desaturated chromatic set."""
+    patches = [
+        ProbePatch(f"neutral_{round(drive * 100):03d}", (drive, drive, drive))
+        for drive in NEUTRAL_RAMP_DRIVE
+    ]
+    patches += [
+        ProbePatch(
+            f"{axis}_{round(level * 100):03d}",
+            _triple(channel * level for channel in unit),
+        )
+        for axis, unit in CHROMATIC_AXES
+        for level in CHROMATIC_DRIVE_LEVELS
+    ]
+    patches += [
+        ProbePatch(
+            f"{axis}_desat",
+            _triple(
+                DESATURATED_DRIVE
+                * (DESATURATED_BLEND * channel + (1.0 - DESATURATED_BLEND))
+                for channel in unit
+            ),
+        )
+        for axis, unit in CHROMATIC_AXES
+    ]
+    return tuple(patches)
+
+
+PROBE_PATCHES = _probe_patch_set()
+
+
+def _drive_to_display_reference_matrix(
+    characterization: DisplayCharacterization,
+    chromatic_adaptation_transform: str,
+) -> npt.NDArray[np.float64]:
+    """Wall drive fraction → display-reference XYZ: the inverse of the VP
+    Radiometric chain's drive-space stage.
+
+    Patches are stated in drive space because that is where a probe set
+    is meaningful — full drive is the wall's boundary, half drive its
+    midpoint — and the content that produces them follows from the
+    anchor and the measured primaries. Boundary patches whose content
+    the compressor then moves are predicted from the config itself, not
+    from this matrix.
+    """
+    return np.asarray(
+        np.linalg.inv(
+            _drive_space_matrix(characterization, chromatic_adaptation_transform)[
+                :3, :3
+            ]
+        ),
+        dtype=np.float64,
+    )
+
+
+def _apply_rgb(
+    processor: "OCIO.CPUProcessor", rgb: npt.NDArray[np.floating[Any]]
+) -> npt.NDArray[np.float64]:
+    """One RGB triple through an OCIO CPU processor. The buffer is a
+    private copy: applyRGB writes in place."""
+    pixel = np.array(rgb, dtype=np.float32)
+    processor.applyRGB(pixel)
+    return pixel.astype(np.float64)
+
+
+def predict_probe_patches(
+    config: "OCIO.Config",
+    display: str,
+    characterization: DisplayCharacterization,
+    nits_anchor: float,
+    view: str,
+    chromatic_adaptation_transform: str,
+) -> Tuple[PatchPrediction, ...]:
+    """
+    Predict on-wall colorimetry for the probe set through the generated
+    config (§spec:verification).
+
+    Each patch runs forward through the config twice: scene reference →
+    (display, view) gives the code values the wall receives, and the
+    display colorspace → display reference gives the XYZ those code
+    values produce. Inverting a drive-space patch back to the content
+    that produces it takes the config's own display-reference → scene-
+    reference leg. Predictions therefore come from the same transforms
+    the runtime executes — no second implementation to drift, and no
+    assumption about which scene reference the base config uses
+    (§spec:config-structure).
+
+    Predictions target the default rendering (VP Radiometric): it is the
+    one making a radiometric claim, so it is the one a measurement can
+    falsify. The photographic view is verifiable only against its own
+    tone scale.
+
+    Raises:
+        ValueError: When the config lacks the interchange roles the
+            display and view depend on.
+    """
+    scene_reference, display_reference = derive_reference_spaces(config)
+    encode = config.getProcessor(
+        scene_reference, display, view, OCIO.TRANSFORM_DIR_FORWARD
+    ).getDefaultCPUProcessor()
+    decode = config.getProcessor(display, display_reference).getDefaultCPUProcessor()
+    to_scene_reference = config.getProcessor(
+        display_reference, scene_reference
+    ).getDefaultCPUProcessor()
+    to_display_reference = _drive_to_display_reference_matrix(
+        characterization, chromatic_adaptation_transform
+    )
+    anchor_scale = REFERENCE_LUMINANCE / nits_anchor
+
+    predictions = []
+    for patch in PROBE_PATCHES:
+        content = to_display_reference @ np.asarray(patch.drive, dtype=np.float64)
+        scene_linear = _apply_rgb(to_scene_reference, content) * anchor_scale
+        emitted = _apply_rgb(encode, scene_linear)
+        # Code values are a signal, not a float: clamp to the legal
+        # range and land them on the probe imagery's grid, so the
+        # prediction describes the file the wall is actually driven with.
+        code_value = (
+            np.round(np.clip(emitted, 0.0, 1.0) * PROBE_CODE_LEVELS) / PROBE_CODE_LEVELS
+        )
+        xyz = _apply_rgb(decode, code_value) * REFERENCE_LUMINANCE
+        predictions.append(
+            PatchPrediction(
+                id=patch.id,
+                scene_linear=_recorded_triple(scene_linear),
+                code_value=_recorded_triple(code_value),
+                xyz=_recorded_triple(xyz),
+            )
+        )
+    return tuple(predictions)
+
+
+def build_predictions(
+    config: "OCIO.Config",
+    display: str,
+    characterization: DisplayCharacterization,
+    nits_anchor: float,
+    config_path: str,
+    view: str = VP_RADIOMETRIC_VIEW,
+    chromatic_adaptation_transform: str = "CAT02",
+) -> Predictions:
+    """
+    Predictions for a config already written to disk, bound to it by
+    sha256 (§spec:provenance). The config file is named by basename
+    only: the predictions sit beside it, and absolute paths would tie a
+    shipped artifact to one machine's directory layout.
+
+    Raises:
+        ValueError: When the config file is unreadable.
+    """
+    scene_reference, _ = derive_reference_spaces(config)
+    return Predictions(
+        config_file=os.path.basename(config_path),
+        config_sha256=file_sha256(config_path, "Generated config"),
+        display=display,
+        view=view,
+        scene_reference=scene_reference,
+        patches=predict_probe_patches(
+            config,
+            display,
+            characterization,
+            nits_anchor,
+            view,
+            chromatic_adaptation_transform,
+        ),
+    )
+
+
+# Fixed preamble: emitted verbatim, so a parsed file re-emits byte for
+# byte even though YAML parsing drops comments.
+PREDICTIONS_HEADER = (
+    "# PREDICTIONS ARTIFACT — machine-written (§spec:verification).\n"
+    "# The verification contract for one generated OCIO config. For each\n"
+    "# probe patch: the scene-linear content that produces it, the code\n"
+    "# values the config emits for that content (identical to the probe\n"
+    "# imagery), and the CIE XYZ the wall is predicted to emit, in cd/m².\n"
+    "# Bound to its config by sha256 — never hand-edited, never separated\n"
+    "# from the config it names.\n"
+)
+
+
+def _format_float(value: float) -> str:
+    """A float as fixed-point text that parses back to itself, so the
+    artifact round-trips byte for byte."""
+    number = float(value)
+    if not np.isfinite(number):
+        raise ValueError(f"Predictions cannot record a non-finite value: {number}")
+    text = f"{number:.{PREDICTIONS_DECIMALS}f}".rstrip("0")
+    if text.endswith("."):
+        text += "0"
+    return "0.0" if text == "-0.0" else text
+
+
+def _format_triple(values: Tuple[float, float, float]) -> str:
+    return f"[{', '.join(_format_float(value) for value in values)}]"
+
+
+def _format_string(value: str, what: str) -> str:
+    """A double-quoted YAML scalar. Unprintable characters are refused
+    for the same reason provenance refuses them: the value is written
+    verbatim into an artifact other tools parse."""
+    reject_control_characters(value, what)
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def emit_predictions(predictions: Predictions) -> str:
+    """The predictions artifact as text (§spec:verification). Byte-
+    deterministic: fixed key order, fixed float formatting, no
+    timestamps."""
+    lines = [
+        PREDICTIONS_HEADER,
+        f"schema: {_format_string(PREDICTIONS_SCHEMA, 'Predictions schema')}\n",
+        "generator: "
+        f"{_format_string(f'ociodisplaygen {GENERATOR_VERSION}', 'Generator')}\n",
+        "config:\n",
+        f"  file: {_format_string(predictions.config_file, 'Config file')}\n",
+        f"  sha256: {_format_string(predictions.config_sha256, 'Config sha256')}\n",
+        f"display: {_format_string(predictions.display, 'Display name')}\n",
+        f"view: {_format_string(predictions.view, 'View name')}\n",
+        "scene_reference: "
+        f"{_format_string(predictions.scene_reference, 'Scene reference')}\n",
+        "patches:\n",
+    ]
+    for patch in predictions.patches:
+        lines += [
+            f"  - id: {_format_string(patch.id, 'Patch id')}\n",
+            f"    scene_linear: {_format_triple(patch.scene_linear)}\n",
+            f"    code_value: {_format_triple(patch.code_value)}\n",
+            f"    xyz: {_format_triple(patch.xyz)}\n",
+        ]
+    return "".join(lines)
+
+
+def _require_string(document: Dict[str, Any], key: str, path: str) -> str:
+    """A string field from a parsed predictions artifact.
+
+    Unprintable characters are refused on the way in for the same reason
+    the emit side refuses them: check_predictions prints these fields to
+    the operator as a trust signal, and a newline or ANSI escape in a
+    supplied artifact could forge the verdict being read
+    (§spec:provenance).
+    """
+    value = document.get(key)
+    if not isinstance(value, str):
+        raise ValueError(f"Predictions '{path}' key '{key}' must be a string")
+    return reject_control_characters(value, f"Predictions '{path}' key '{key}'")
+
+
+def _require_bare_filename(value: str, what: str) -> str:
+    """A name from a parsed artifact that will be joined to a directory.
+
+    The artifact crosses machines, so a name that escapes its directory
+    on any platform is malformed on every platform: both path flavors
+    are checked, which catches the backslash POSIX would treat as an
+    ordinary character and the drive letter that makes an NT join
+    discard the base entirely ('C:x'). '.' and '..' name a directory
+    rather than a file and are refused too, so the invariant is exactly
+    'a file beside the artifact'.
+
+    Raises:
+        ValueError: When value is not a bare filename.
+    """
+    contained = value and value not in (os.curdir, os.pardir)
+    for flavor in (posixpath, ntpath):
+        contained = (
+            contained
+            and not flavor.splitdrive(value)[0]
+            and flavor.basename(value) == value
+        )
+    if not contained:
+        raise ValueError(
+            f"{what} '{value}' is not a bare filename — it must name a "
+            f"file beside the artifact, with no directory, drive, or "
+            f"parent component (§spec:provenance)"
+        )
+    return value
+
+
+def _parse_triple(
+    raw: Any, path: str, patch_id: str, field: str
+) -> Tuple[float, float, float]:
+    if not isinstance(raw, list) or len(raw) != 3:
+        raise ValueError(
+            f"Predictions '{path}' patch '{patch_id}' field '{field}' "
+            f"must be a list of three numbers"
+        )
+    try:
+        return _triple(raw)
+    except (TypeError, ValueError) as e:
+        raise ValueError(
+            f"Predictions '{path}' patch '{patch_id}' field '{field}' "
+            f"is not numeric: {e}"
+        ) from e
+
+
+def parse_predictions(data: bytes, path: str) -> Predictions:
+    """
+    Read a predictions artifact (§spec:verification).
+
+    Raises:
+        ValueError: For invalid YAML, an unrecognized schema, or a
+            malformed patch list.
+    """
+    document = parse_yaml_mapping(data, path, "Predictions")
+    schema = document.get("schema")
+    if schema != PREDICTIONS_SCHEMA:
+        raise ValueError(
+            f"Predictions '{path}' declares schema {schema!r}; this "
+            f"generator reads '{PREDICTIONS_SCHEMA}'"
+        )
+    config = document.get("config")
+    if not isinstance(config, dict):
+        raise ValueError(f"Predictions '{path}' has no 'config' mapping")
+    raw_patches = document.get("patches")
+    if not isinstance(raw_patches, list) or not raw_patches:
+        raise ValueError(f"Predictions '{path}' has no patches")
+    patches = []
+    for entry in raw_patches:
+        if not isinstance(entry, dict):
+            raise ValueError(f"Predictions '{path}' patch entries must be mappings")
+        # Ids key the measurement file a session writes back and name
+        # the probe image beside it, so they are filenames in every tool
+        # that reads this artifact, not only in this one.
+        patch_id = _require_bare_filename(
+            _require_string(entry, "id", path), f"Predictions '{path}' patch id"
+        )
+        patches.append(
+            PatchPrediction(
+                id=patch_id,
+                scene_linear=_parse_triple(
+                    entry.get("scene_linear"), path, patch_id, "scene_linear"
+                ),
+                code_value=_parse_triple(
+                    entry.get("code_value"), path, patch_id, "code_value"
+                ),
+                xyz=_parse_triple(entry.get("xyz"), path, patch_id, "xyz"),
+            )
+        )
+    # Normalized and shape-checked exactly as the promotion pointer's
+    # digest is: an uppercase or truncated digest is a malformed file,
+    # not a config that fails to match.
+    recorded_sha256 = _require_string(config, "sha256", path).lower()
+    if not SHA256_HEX_PATTERN.fullmatch(recorded_sha256):
+        raise ValueError(
+            f"Predictions '{path}' config sha256 '{recorded_sha256}' is "
+            f"malformed — expected a 64-character hex sha256 digest "
+            f"(§spec:provenance)"
+        )
+    # The artifact attests that the config sitting beside it is the one
+    # it describes, so the recorded name is a bare filename — the same
+    # containment the promotion pointer enforces. Without it a supplied
+    # artifact could aim the hash check at an unrelated trusted config
+    # and pass while carrying forged patch values, or report the digest
+    # of any readable file.
+    config_file = _require_bare_filename(
+        _require_string(config, "file", path), f"Predictions '{path}' config file"
+    )
+    return Predictions(
+        config_file=config_file,
+        config_sha256=recorded_sha256,
+        display=_require_string(document, "display", path),
+        view=_require_string(document, "view", path),
+        scene_reference=_require_string(document, "scene_reference", path),
+        patches=tuple(patches),
+    )
+
+
+def _png_chunk(kind: bytes, payload: bytes) -> bytes:
+    """One PNG chunk: length, type, payload, CRC32 over type+payload."""
+    return (
+        struct.pack(">I", len(payload))
+        + kind
+        + payload
+        + struct.pack(">I", zlib.crc32(kind + payload))
+    )
+
+
+def probe_patch_png(prediction: PatchPrediction) -> bytes:
+    """
+    A solid-color 16-bit PNG for one probe patch — the image a session
+    puts on the wall.
+
+    Written against the format with stdlib zlib rather than through an
+    image library: the stored pixel is exactly the code value the
+    prediction was computed from, with no colorspace tagging, gamma
+    chunk, or encoder default able to reinterpret it.
+
+    Raises:
+        ValueError: For code values outside [0, 1] — a patch that
+            cannot be represented as a signal.
+    """
+    levels = [round(channel * PROBE_CODE_LEVELS) for channel in prediction.code_value]
+    if not all(0 <= level <= PROBE_CODE_LEVELS for level in levels):
+        raise ValueError(
+            f"Probe patch '{prediction.id}' has code values outside [0, 1]: "
+            f"{prediction.code_value}"
+        )
+    row = b"\x00" + struct.pack(">HHH", *levels) * PROBE_PATCH_PIXELS
+    header = struct.pack(
+        ">IIBBBBB",
+        PROBE_PATCH_PIXELS,
+        PROBE_PATCH_PIXELS,
+        16,  # bit depth
+        2,  # color type: truecolor
+        0,  # compression: deflate
+        0,  # filter method: adaptive
+        0,  # interlace: none
+    )
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + _png_chunk(b"IHDR", header)
+        + _png_chunk(b"IDAT", zlib.compress(row * PROBE_PATCH_PIXELS, 9))
+        + _png_chunk(b"IEND", b"")
+    )
+
+
+def write_probe_imagery(directory: str, predictions: Predictions) -> List[str]:
+    """Write one probe image per patch into directory, creating it.
+    Returns the paths written, in patch order."""
+    os.makedirs(directory, exist_ok=True)
+    written = []
+    for patch in predictions.patches:
+        path = os.path.join(directory, f"{patch.id}.png")
+        with open(path, "wb") as f:
+            f.write(probe_patch_png(patch))
+        written.append(path)
+    return written
+
+
+def _sibling_artifact(config_path: str, suffix: str) -> str:
+    """A handoff artifact beside a generated config, sharing its stem."""
+    return f"{os.path.splitext(config_path)[0]}{suffix}"
+
+
+def predictions_path(config_path: str) -> str:
+    """The predictions artifact beside a generated config."""
+    return _sibling_artifact(config_path, PREDICTIONS_SUFFIX)
+
+
+def probe_directory(config_path: str) -> str:
+    """The probe imagery directory beside a generated config."""
+    return _sibling_artifact(config_path, PROBE_DIR_SUFFIX)
+
+
+def check_predictions(path: str) -> None:
+    """
+    Report what a predictions file describes and whether the config it
+    names is still the config it was generated from — the verification
+    counterpart to the provenance lines in the config itself
+    (§spec:provenance, §req:user-stories).
+
+    Raises:
+        ValueError: For an unreadable or malformed file, a missing
+            config, or a config whose bytes no longer match.
+    """
+    predictions = parse_predictions(read_file_bytes(path, "Predictions"), path)
+    print(f"Predictions: {path}")
+    print(f"   Display: {predictions.display}")
+    print(f"   View: {predictions.view}")
+    print(f"   Scene reference: {predictions.scene_reference}")
+    print(f"   Patches: {len(predictions.patches)}")
+    print(f"   Config: {predictions.config_file}")
+    print(f"   Recorded sha256: {predictions.config_sha256}")
+    config_path = os.path.join(
+        os.path.dirname(os.path.abspath(path)), predictions.config_file
+    )
+    actual = file_sha256(config_path, "Generated config")
+    if not hmac.compare_digest(actual, predictions.config_sha256):
+        raise ValueError(
+            f"Config '{predictions.config_file}' does not match these "
+            f"predictions: recorded sha256 {predictions.config_sha256}, "
+            f"actual sha256 {actual}. The predictions describe a different "
+            f"config — measuring against them would compare the wall to a "
+            f"config it is not running (§spec:verification)"
+        )
+    print(f"   ✓ '{predictions.config_file}' matches the recorded hash")
+
+
 def generate_output_filename(
     manifest: Dict[str, Any], characterization: DisplayCharacterization
 ) -> str:
@@ -1418,7 +2024,39 @@ def create_base_ocio_config(manifest: Dict[str, Any]) -> "OCIO.Config":
         raise
 
 
+def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    """Command line surface: generate by default, or inspect a
+    predictions artifact."""
+    parser = argparse.ArgumentParser(
+        prog="OCIODisplayGen.py",
+        description=(
+            f"Generate an OCIO config for a measured wall from "
+            f"'{SHOW_MANIFEST_FILE}' and the measurements artifact it "
+            f"promotes, plus the verification predictions and probe "
+            f"imagery a color-wrangler session measures against."
+        ),
+    )
+    parser.add_argument(
+        "--check-predictions",
+        metavar="FILE",
+        help=(
+            "Report what a predictions artifact describes and verify it "
+            "still matches the config it names, then exit."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
 def main():
+    args = parse_args()
+    if args.check_predictions:
+        try:
+            check_predictions(args.check_predictions)
+        except ValueError as e:
+            print(f"❌ Error: {e}")
+            sys.exit(1)
+        return
+
     print("=== OCIO Display Generator ===")
     print(f"Loading manifest from '{SHOW_MANIFEST_FILE}'...")
     try:
@@ -1491,8 +2129,27 @@ def main():
             ) from exc
         with open(output_config_path, "w", encoding="utf-8") as f:
             f.write(ocio_config_obj.serialize())
+        # Predictions bind to the config's bytes, so they are built from
+        # the file just written (§spec:verification, §spec:provenance).
+        predictions = build_predictions(
+            ocio_config_obj,
+            display_name,
+            characterization,
+            nits_anchor,
+            output_config_path,
+        )
+        predictions_file = predictions_path(output_config_path)
+        with open(predictions_file, "w", encoding="utf-8") as f:
+            f.write(emit_predictions(predictions))
+        probe_dir = probe_directory(output_config_path)
+        probe_files = write_probe_imagery(probe_dir, predictions)
         print("\n✅ Successfully created OCIO config!")
         print(f"   Output file: {output_config_path}")
+        print(f"   Predictions: {predictions_file}")
+        print(
+            f"   Probe imagery: {probe_dir}/ "
+            f"({len(probe_files)} patches, {predictions.view})"
+        )
         print("\nProvenance recorded in the config description:")
         for line in provenance_description(provenance).splitlines():
             print(f"   {line}")
@@ -1518,6 +2175,10 @@ def main():
         print(
             f"2. In your application, select display '{display_name}' "
             f"with view '{VP_RADIOMETRIC_VIEW}'"
+        )
+        print(
+            f"3. To verify: display '{probe_dir}/*.png' on the wall, "
+            f"measure each patch, and compare against '{predictions_file}'"
         )
     except Exception as e:
         print(f"❌ Error creating OCIO config: {e}")

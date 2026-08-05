@@ -21,6 +21,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Verification handoff (§spec:verification): generation writes a
+  predictions artifact and probe patch imagery beside the config. For
+  each of 29 probe patches — a neutral ramp plus chromatic axes at full
+  drive, half drive, and half saturation — the artifact records the
+  scene-linear content that produces it, the code values the config
+  emits, and the CIE XYZ the wall is predicted to emit in cd/m².
+  Predictions come from the config's own transforms and target the
+  default VP Radiometric view. The artifact is bound to its config by
+  sha256 and re-emits byte for byte after parsing. Probe imagery is one
+  solid-color 16-bit PNG per patch, holding exactly the code values the
+  predictions were computed from.
+
+- `--check-predictions FILE` reports what a predictions artifact
+  describes and exits nonzero when the config it names is no longer the
+  config on disk. A parsed artifact is treated as untrusted input, on
+  the same terms as the promotion pointer: the config name and patch
+  ids must be bare filenames beside the artifact, the recorded digest
+  must be a well-formed sha256, and no field may carry control
+  characters.
+
 - Hash binding (§spec:provenance): generation refuses when the
   measurements artifact on disk does not hash to the promotion
   pointer's recorded sha256 (or when the recorded digest is

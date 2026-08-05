@@ -30,6 +30,7 @@ def load_sample_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
     manifest, measurements, _ = load_inputs(str(SAMPLE_MANIFEST_PATH))
     return manifest, measurements
 
+
 # Sample wall measurements from the shipped measurements artifact
 WALL_PRIMARIES = np.array([[0.680, 0.320], [0.265, 0.690], [0.150, 0.060]])
 WALL_WHITEPOINT = (0.3127, 0.3290)

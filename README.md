@@ -68,6 +68,32 @@ having an unknown algorithm in the display do the transformation.
    python OCIODisplayGen.py
    ```
 
+## Verification Handoff
+
+Each run writes two more artifacts beside the config
+(`custom_display_config.ocio` in the shipped sample):
+
+- `custom_display_config.predictions.yaml` — for each probe patch, the
+  scene-linear content that produces it, the code values the config
+  emits, and the CIE XYZ the wall is predicted to emit in cd/m². Bound
+  to the config by sha256; never hand-edited.
+- `custom_display_config.probe/` — one solid-color 16-bit PNG per
+  patch, holding exactly those code values.
+
+Display the probe images on the wall, measure each patch, and compare
+the measurements against the predictions. Judging the residuals
+(ΔE2000, unity exponent) belongs to OLE-Toolset, not to this tool.
+
+To identify a predictions file found on a show machine and confirm it
+still describes the config sitting next to it:
+
+```bash
+uv run ./OCIODisplayGen.py --check-predictions custom_display_config.predictions.yaml
+```
+
+It exits nonzero when the config's bytes no longer match the recorded
+hash — those predictions describe a different config.
+
 ## Configuration Files
 
 ### Show manifest (`show_manifest.yaml`)
