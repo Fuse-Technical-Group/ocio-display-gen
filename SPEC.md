@@ -308,9 +308,13 @@ instrument aimed. Sessions come in two modes over one shared core
   pre-show drift checks routine (§req:user-stories).
 
 **Ownership split:** session tooling (both modes — everything that
-touches hardware) lives in a sibling repository with a
-surface-register name, depending on bmd-signal-gen, colour-specio,
-and the Tessera read-only client. This repository keeps everything
+touches hardware) lives in a sibling repository named **Stilb** (the
+CGS unit of luminance: the product is measured light, and the CLI
+users type is `stilb characterize` / `stilb verify`), depending on
+bmd-signal-gen, colour-specio, and the Tessera read-only client.
+Stilb is also the umbrella name for the whole workflow —
+*characterization-based color management for real-time playback on
+LED surfaces* — of which this repository is the generator component. This repository keeps everything
 that needs OCIO semantics and no hardware: generation, prediction,
 and the ΔE report. The seam at every stage is a file
 (§spec:provenance). **Why:** characterize and verify share the

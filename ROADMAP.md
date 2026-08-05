@@ -62,8 +62,9 @@ shipped tooling.
 
 Session workstreams in this section migrate to the sibling session
 tool's governance at its repo creation (§spec:measurement-loop
-ownership split); prediction and report tooling stay here. Repo
-creation decides the sibling's (surface-register) name.
+ownership split); prediction and report tooling stay here. The
+sibling is named **Stilb** (decided 2026-08-04; PyPI name confirmed
+available).
 
 ### Processor state snapshot §road:processor-state-snapshot
 
