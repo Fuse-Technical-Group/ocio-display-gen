@@ -726,6 +726,7 @@ GENERATOR_VERSION = "0.1.0"
 # sha256 hex digest: 64 lowercase hex characters after normalization.
 SHA256_HEX_PATTERN = re.compile(r"[0-9a-f]{64}")
 
+
 def reject_control_characters(value: str, what: str) -> str:
     """
     Refuse values destined for the generated config's description when
@@ -960,9 +961,7 @@ def load_inputs(
     manifest = parse_yaml_mapping(manifest_bytes, manifest_path, "Show manifest")
     pointer = resolve_measurements_pointer(manifest, manifest_path)
     artifact_bytes = read_file_bytes(pointer.artifact_path, "Measurements artifact")
-    measurements_sha256 = enforce_promotion_hash(
-        pointer, artifact_bytes, manifest_path
-    )
+    measurements_sha256 = enforce_promotion_hash(pointer, artifact_bytes, manifest_path)
     measurements = parse_yaml_mapping(
         artifact_bytes, pointer.artifact_path, "Measurements artifact"
     )
@@ -1528,11 +1527,12 @@ def _drive_to_scene_linear_matrix(
     the compressor then moves are predicted from the config itself, not
     from this matrix.
     """
-    drive = np.diag(
-        [REFERENCE_LUMINANCE / characterization.peak_luminance] * 3
-    ) @ create_display_xyz_to_native_matrix(
-        characterization, chromatic_adaptation_transform
-    )[:3, :3]
+    drive = (
+        np.diag([REFERENCE_LUMINANCE / characterization.peak_luminance] * 3)
+        @ create_display_xyz_to_native_matrix(
+            characterization, chromatic_adaptation_transform
+        )[:3, :3]
+    )
     return np.asarray(
         np.linalg.inv(_ap0_to_display_reference_matrix())
         @ np.linalg.inv(drive)
@@ -1594,8 +1594,7 @@ def predict_probe_patches(
         # range and land them on the probe imagery's grid, so the
         # prediction describes the file the wall is actually driven with.
         code_value = (
-            np.round(np.clip(emitted, 0.0, 1.0) * PROBE_CODE_LEVELS)
-            / PROBE_CODE_LEVELS
+            np.round(np.clip(emitted, 0.0, 1.0) * PROBE_CODE_LEVELS) / PROBE_CODE_LEVELS
         )
         xyz = _apply_rgb(decode, code_value) * REFERENCE_LUMINANCE
         predictions.append(
@@ -1720,9 +1719,9 @@ def _require_string(document: Dict[str, Any], key: str, path: str) -> str:
     return value
 
 
-def _parse_triple(raw: Any, path: str, patch_id: str, field: str) -> Tuple[
-    float, float, float
-]:
+def _parse_triple(
+    raw: Any, path: str, patch_id: str, field: str
+) -> Tuple[float, float, float]:
     if not isinstance(raw, list) or len(raw) != 3:
         raise ValueError(
             f"Predictions '{path}' patch '{patch_id}' field '{field}' "

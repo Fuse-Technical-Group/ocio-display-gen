@@ -213,9 +213,7 @@ def test_artifact_path_resolved_relative_to_show_manifest_file(tmp_path: Path) -
     show_dir = tmp_path / "show"
     (show_dir / "measurements").mkdir(parents=True)
     artifact_path = show_dir / "measurements" / "artifact.yaml"
-    artifact_path.write_text(
-        yaml.safe_dump(make_measurements_dict()), encoding="utf-8"
-    )
+    artifact_path.write_text(yaml.safe_dump(make_measurements_dict()), encoding="utf-8")
     manifest = make_manifest_dict()
     manifest["measurements"]["file"] = "measurements/artifact.yaml"
     manifest["measurements"]["sha256"] = hashlib.sha256(

@@ -52,9 +52,7 @@ def generate_config_text(manifest_path: Path) -> str:
     config = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
     cs = create_display_colorspace_from_characterization(char)
     register_display(config, cs, char)
-    record_provenance(
-        config, provenance, manifest.get("show", {}).get("description")
-    )
+    record_provenance(config, provenance, manifest.get("show", {}).get("description"))
     return config.serialize()
 
 
@@ -131,9 +129,7 @@ def test_non_string_show_description_rejected(tmp_path: Path) -> None:
 
 
 def test_generator_version_matches_pyproject() -> None:
-    pyproject = tomllib.loads(
-        (REPO_DIR / "pyproject.toml").read_text(encoding="utf-8")
-    )
+    pyproject = tomllib.loads((REPO_DIR / "pyproject.toml").read_text(encoding="utf-8"))
     assert GENERATOR_VERSION == pyproject["project"]["version"]
 
 
@@ -174,9 +170,7 @@ def test_malformed_recorded_digest_refuses(tmp_path: Path, bad_digest: str) -> N
 
 def test_uppercase_recorded_digest_accepted(tmp_path: Path) -> None:
     manifest_path = copy_samples(tmp_path)
-    rewrite_pointer_sha256(
-        manifest_path, sha256_file(tmp_path / ARTIFACT_NAME).upper()
-    )
+    rewrite_pointer_sha256(manifest_path, sha256_file(tmp_path / ARTIFACT_NAME).upper())
 
     manifest, _, provenance = load_inputs(str(manifest_path))
     assert provenance.measurements_sha256 == sha256_file(tmp_path / ARTIFACT_NAME)
