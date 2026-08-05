@@ -63,53 +63,28 @@ having an unknown algorithm in the display do the transformation.
 
 ## Configuration Files
 
-### Custom Display Configuration (`display_config.yaml`)
-Contains your display measurements and base OCIO configuration selection:
-- Native primary coordinates (red, green, blue)
-- White point
-- Luminance characteristics (black level, peak luminance)
-- Measured EOTF settings
-- Viewing conditions
-- Gamut mapping strategy
+### Decisions file (`decisions.yaml`)
+Human-authored and reviewed. Contains:
+- Show naming (panel and processor identity)
+- Intended processor signal contract (EOTF, intensity, processing state)
 - Base OCIO configuration selection (type, versions)
-- Validation mode settings
+- White point policy and VP Radiometric settings (nits anchor, overflow policy)
+- Validation mode
+- Promotion pointer to the measurements artifact of record:
+  `measurements: {file, sha256}`
 
-### Example Configuration
+### Measurements artifact (`measurements/*.yaml`)
+Machine-written by a characterization session, immutable, never
+hand-edited (the shipped `measurements/ftg_stage1_20240115.yaml` is a
+hand-built sample). Contains measured primaries and white point, black
+level and peak luminance, ambient floor, instrument identity,
+processor-state snapshot, and timestamps. Accept a measurement run by
+recording its sha256 in the decisions file's promotion pointer;
+generation refuses when the artifact on disk no longer matches the
+recorded hash.
 
-```yaml
-# display_config.yaml
-display:
-  name: "Sony BVM-HX310"
-
-# Validation mode settings
-validation:
-  strict_mode: false        # Enable strict mode (errors instead of warnings)
-
-primaries:
-  red: [0.708, 0.292]
-  green: [0.170, 0.797]
-  blue: [0.131, 0.046]
-
-white_point: [0.3127, 0.3290]
-
-luminance:
-  black_level: 0.001
-  peak_luminance: 1000.0
-
-# Measured display response (EOTF)
-eotf:
-  type: "PQ"     # Measured EOTF: "PQ", "HLG", or "GAMMA"
-  # gamma_value: 2.4   # Only include if type is "GAMMA"
-
-gamut_mapping: "soft_clip"
-
-ocio:
-  base_config:
-    type: "studio"              # studio, aces, or custom
-    config_version: "v2.1.0"    # config version
-    aces_version: "v1.3"        # ACES version
-    ocio_version: "v2.3"        # OCIO version
-```
+The shipped `decisions.yaml` and `measurements/ftg_stage1_20240115.yaml`
+are a working example; see those files for the schema.
 
 ## Base OCIO Configuration Selection
 
