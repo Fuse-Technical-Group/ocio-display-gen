@@ -1,98 +1,27 @@
 # ocio-display-gen — Roadmap
 
-Sections run the walking skeleton to closed-loop measurement first:
-the harness makes accuracy checkable, and sessions make it
-measurable. Runtime back-compat (version tiers) and model refinement
-(measured response) follow once the loop exists to judge them.
+Component roadmap for the generate layer of
+[color-wrangler](https://github.com/Fuse-Technical-Group/color-wrangler).
+Session and validation work live in the umbrella roadmap; this repo ships
+predictions first (the verification handoff), then model refinement,
+then runtime back-compat, then documentation pruning.
 
-## Verification harness §road:verification-harness
-
-The report/verdict tool re-homed to OLE-Toolset (the independent
-judge — §spec:verification, §spec:measurement-loop ownership split);
-this repository ships predictions and their file format as the
-handoff contract.
+## Verification handoff §road:verification-harness
 
 ### Probe patches and predictions §road:probe-patches
 
 Generate probe patch imagery with predicted on-wall XYZ values for a
 given generated config, emitting a documented, stable predictions
 file (config hash included per §spec:provenance) as the contract
-consumed by OLE-Toolset. §spec:verification.
-
-### Measurement guide §road:measurement-guide
-
-Write a measurement procedure guide (MEASUREMENT.md): processor
-state lockdown and warm-up, generation patch set (primaries, white,
-black, per-channel ramps, additivity check), shuffled patch
-presentation with an unshuffle key (thermal-drift decorrelation, per
-OLE-Toolset practice), validation patch set through the deployed
-chain, and escalation criteria (1D shaper LUTs, corrective 3D LUT,
-judged by OLE-Toolset's native-precision analysis) keyed to
-§spec:characterization-model and §spec:verification. Depends on
-§road:probe-patches.
+consumed by color-wrangler sessions and OLE-Toolset.
+§spec:verification.
 
 **Verify:** Predictions for the sample config match colour-science
-reference computation within float tolerance, and the predictions
-file round-trips (parse → re-emit byte-identical) with the config
-hash present. Against a synthetic measurement file equal to the
-predictions, a ΔE2000 comparison (test-level, colour-science)
-reports ≈ 0 and the unity-exponent criterion holds; a perturbed
-patch is flagged. Confirm the measurement guide walks a reader from
-patch generation to a rendered OLE-Toolset report using only shipped
-tooling (OLE-Toolset invocation documented, not vendored).
-
-## Closed-loop measurement §road:closed-loop-measurement
-
-Session workstreams in this section migrate to Stilb's governance
-at its repo creation (§spec:measurement-loop ownership split);
-prediction tooling stays here; report tooling is OLE-Toolset's.
-Stilb may absorb OLE-Toolset's session skeleton (TPG controller,
-measure loop), adding the gates it lacks. The
-sibling is named **Stilb** (decided 2026-08-04; PyPI name confirmed
-available).
-
-### Processor state snapshot §road:processor-state-snapshot
-
-Add a CLI surface that snapshots a Brompton processor's state
-read-only via the Tessera HTTP API, diffs it against the yaml's
-recorded signal contract, and reports drift (including live input
-metadata vs. declared wire format). §spec:measurement-loop.
-
-### Session orchestrator §road:session-orchestrator
-
-Add the one-command measurement session: contract audit gate, patch
-drive via bmd-signal-gen's live color-update API on a DeckLink,
-instrument reads behind a Colorimetry Research driver contract, and
-emission of the measurements file consumed by OLE-Toolset's
-report tooling. §spec:measurement-loop. Depends on
-§road:probe-patches and §road:processor-state-snapshot. Blocked in part
-— sessions on SDI / 10-bit YCbCr links await wire-format validation
-upstream in bmd-signal-gen (RGB 12-bit is validated today); unblocked
-per format as bmd-signal-gen's spec records validation.
-
-### Characterize mode §road:characterize-session
-
-Add the `characterize` session mode: fixed device-referred patch
-protocol driven raw (no OCIO), emitting the immutable measurements
-artifact with embedded processor snapshot, instrument identity, and
-ambient floor. §spec:measurement-loop,
-§spec:characterization-model. Depends on §road:session-orchestrator.
-
-**Verify:** With a mock instrument driver that returns the session's
-own predictions: run the session command end-to-end and confirm it
-produces a measurements file that OLE-Toolset's comparison judges
-as passing (test-level ΔE in the interim); perturb the
-recorded signal contract (e.g., wrong gamma in yaml vs. live
-processor) and confirm the session refuses to measure; declare a wire
-format the live input metadata contradicts (e.g., 8-bit negotiated)
-and confirm the session aborts with the mismatch named. Characterize
-mode with the virtual instrument: confirm the emitted measurements
-artifact carries measurements, processor snapshot, instrument
-identity, ambient floor, and timestamps, and that promoting it then
-generating a config succeeds end-to-end. With real hardware
-(wall + CR-300): complete a full characterize → promote → generate →
-verify cycle and confirm the report matches a manually measured
-spot-check patch.
+reference computation within float tolerance; the predictions file
+round-trips (parse → re-emit byte-identical) with the config hash
+present. Against a synthetic measurement file equal to the
+predictions, a test-level ΔE2000 comparison reports ≈ 0 and the
+unity-exponent criterion holds; a perturbed patch is flagged.
 
 ## Measured response §road:measured-response
 
@@ -133,7 +62,8 @@ Validate each with the matching PyOpenColorIO library version
 
 Rewrite `GAMUT_MAPPING_GUIDE.md`, `COLOR_PIPELINE_DOCUMENTATION.md`,
 and `README.md` to describe only implemented behavior, pointing
-rendering rationale at SPEC.md. §spec:view-transform.
+rendering rationale at SPEC.md and system context at the umbrella.
+§spec:view-transform.
 
 ### Remove dead pipeline code §road:remove-dead-code
 

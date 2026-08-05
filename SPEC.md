@@ -1,92 +1,43 @@
 # ocio-display-gen — Specification
 
+Component spec for the **generate layer** of
+[color-wrangler](https://github.com/Fuse-Technical-Group/color-wrangler)
+— characterization-based color management for real-time playback on
+LED surfaces. The system problem, four-layer architecture, artifact
+contracts, measurement sessions, and verification policy live in the
+umbrella spec; sections here refine the generate layer only.
+Terminology (including "wall" as shorthand for any LED surface)
+follows the umbrella.
+
 ## Problem §spec:problem
 
 *Status: complete*
 
-LED video walls deviate from every broadcast standard in three ways at
-once: native primaries with oversaturated red and green and desaturated
-blue relative to standard gamuts; "diffuse white" luminance of 1000 cd/m²
-or more; and a signal path that is often limited to SDR encodings. The
-LED processor is the wrong place to correct this — vendor color
-processing is opaque, poorly implemented, and hard to control on site.
+Within the color-wrangler system, this component turns a show manifest
+and a promoted measurements artifact into a single self-contained OCIO
+config — the profile and rendering intents for one measured wall — and
+into the predictions file that verification measures against. It needs
+OCIO semantics and no hardware: fully testable without a photon.
 
-Media servers and render engines (Disguise, Unreal, compositors) already
-speak OpenColorIO. This project generates OCIO configs that carry a
-measured characterization of a specific wall, so the renderer transforms
-scene-linear imagery to the wall's native response and the processor is
-reduced to a fixed, known decode step.
-
-Throughout these documents, "wall" is industry shorthand for any LED
-surface — walls, ceilings, floors, domes, and other geometries. Nothing
-in the system is orientation- or geometry-specific.
-
-**What this is, in established terms:** color management, not
-calibration. Calibration adjusts a device to conform to a standard;
-this system never touches the device. It *characterizes* the device
-(measures what it is), expresses the characterization as a profile
-(the OCIO display colorspace), and transforms content upstream through
-selectable rendering intents (the views) — the ICC architecture,
-carried by OCIO instead of ICC profiles, applied to devices no
-broadcast standard describes. The correctness claim is therefore about
-*reproduction*, not conformance: scene-referred content is reproduced
-faithfully on an arbitrary measured display, verified by closed-loop
-measurement — while the display remains exactly as the manufacturer
-calibrated it.
-
-The scope is a workload, not an industry vertical: **real-time,
-unattended playback** (media servers, game engines), as distinct from
-DCC/offline color management where a human judges frames through a
-reference display. With no one in the loop, correctness is established
-before playback (verification) and held during it (signal contract,
-session gates). Virtual production, concerts, installations, and domes
-are instances of this one workload. The offline world stays connected
-through the config itself: the same file loads in grading DCCs, so the
-grade and the surface execute identical transforms — the config is the
-interchange contract between them.
-
-## Characterization model §spec:characterization-model
+## Characterization inputs §spec:characterization-model
 
 *Status: in progress*
 
-The wall (panels + processor, as configured for show) is characterized
-as a single black box: known code values in, measured light out.
-Characterization input is split along the human/machine line into two
-files the generator consumes together:
+The generator consumes the two artifact-chain files defined by the
+umbrella: the human-authored **show manifest** (naming, policies,
+intended signal contract, promotion pointer `{file, sha256}`) and the
+machine-written, immutable **measurements artifact**. Validation
+splits along the same line — plausibility checks (chromaticity ranges,
+CCT/duv of white, contrast ratio, EOTF sanity) target the measurements
+artifact; policy checks (enums, anchor bounds) target the manifest —
+with strict and warning modes. Missing promotion pointer, unreadable
+artifact, or hash mismatch fail loud.
 
-- A **show manifest** (human-authored, reviewed): show naming, nits
-  anchor, overflow policy, white point policy, target OCIO tier,
-  validation mode, the *intended* processor lockdown state — and a
-  promotion pointer to the measurement artifact of record as
-  `{file, sha256}` (§spec:provenance).
-- A **measurements artifact** (machine-written by a characterization
-  session, immutable, never hand-edited): measured native primaries
-  and white point (CIE xy), black level and peak luminance (cd/m²,
-  absolute), per-channel response when measured, ambient floor,
-  instrument identity and firmware, processor-state snapshot, and
-  timestamps.
-
-**Why the split:** humans editing measured values only inject error,
-and machine-attestable device state (processor gamma, intensity,
-processing flags, panel/instrument identity) is readable from device
-APIs — transcription is an error source with no compensating value.
-The human act at the seam is *acceptance*: promoting a measurement run
-to the characterization of record by recording its hash — a signature,
-not an edit. Immutable measurement artifacts also give drift history
-for free: two sessions diff as two files.
-
-**Why end-to-end:** processor internals (scaling, calibration matrices,
-uniformity) are unobservable and vendor-specific. Measuring through the
-whole chain captures their combined effect without modeling them.
-
-**Why absolute luminance:** the rendering transform is parameterized by
-peak nits, and OCIO's linear conventions are anchored (1.0 = 100 cd/m²
-for PQ paths). Relative measurements cannot place diffuse white
-correctly on an HDR-bright wall.
-
-The system shall validate measurement plausibility (chromaticity ranges,
-CCT/duv of white, contrast ratio, EOTF sanity) before generating output,
-with strict and warning modes.
+Still open in this component: consuming measured per-channel response
+ramps (fitted 1D LUTs in place of the ideal EOTF) and real
+session-written artifacts once `color-wrangler characterize` exists
+(the shipped sample artifact is a hand-built exemplar, labeled as
+such).
 
 ## Generated config structure §spec:config-structure
 
@@ -126,25 +77,24 @@ derivation eliminates.)
 Rendering intent is a per-view choice made by the operator in the media
 server, not a generation-time decision: the wall is registered with
 multiple views and switching intents never requires regenerating the
-config (§req:success-criteria). Three views exist:
+config. Three views exist:
 
 **VP Radiometric (default).** Colorimetric within the wall's volume,
-compression only at its edges (§req:quality-attributes). Scene-linear
-maps to absolute light through a configurable nits anchor (cd/m² per
-scene-linear unit, recorded per show — §req:constraints). Out-of-gamut
-chromaticities are compressed at the boundary by the ACES 2.0 gamut
-compressor parameterized with the wall's measured primaries and peak —
-untouched core, hue-preserving edge. Above-peak luminance follows a
-selectable recorded policy: hard clamp, or a narrow shoulder confined
-to the top of the range. End-to-end system gamma is 1.0: no tone
-scale, no chroma reshaping, no surround compensation, and the encoding
-leg is transparent by construction (§spec:signal-contract,
-§spec:config-structure).
+compression only at its edges. Scene-linear maps to absolute light
+through a configurable nits anchor (cd/m² per scene-linear unit,
+recorded per show). Out-of-gamut chromaticities are compressed at the
+boundary by the ACES 2.0 gamut compressor parameterized with the
+wall's measured primaries and peak — untouched core, hue-preserving
+edge. Above-peak luminance follows a selectable recorded policy: hard
+clamp, or a narrow shoulder confined to the top of the range.
+End-to-end system gamma is 1.0: no tone scale, no chroma reshaping, no
+surround compensation, and the encoding leg is transparent by
+construction (§spec:signal-contract, §spec:config-structure).
 
 **Why radiometric is the default:** in virtual production the wall is
 a light source being photographed. The camera must see the radiometry
 the scene data specifies; photographic rendering belongs in the show's
-grade, not in the wall (§req:user-stories).
+grade, not in the wall.
 
 **ACES 2.0.** The full ACES 2.0 output transform, parameterized by
 measured peak luminance and native primaries as the limiting gamut,
@@ -190,44 +140,24 @@ parameterize primaries, so it is inherently approximate. Building the
 correct solution first gives a reference to measure the decimated tiers
 against.
 
-## Signal contract §spec:signal-contract
+## Signal contract recording §spec:signal-contract
 
 *Status: complete*
 
-The generated config is only valid while the processor stays in the
-state recorded in the characterization: fixed EOTF, locked intensity,
-color processing and dynamic features disabled. The config's metadata
-(descriptions) shall record this state so operators can restore and
-audit it.
-
-**Why the correction lives upstream of the link:** the inverse EOTF is
-the last renderer-side operation, so the 10/12-bit SDR link carries
-perceptually uniform code values and large corrections happen in
-floating point, avoiding the banding that the same correction applied
-in the processor would produce.
-
-**Link encoding.** Where the processor offers a true PQ decode, it is
-preferred at 10-bit (near-threshold quantization across the full
-luminance range; absolute code-to-nits mapping strengthens this
-contract) — but only after verification shows it decodes to light with
-clipping only, since vendor HDR modes are where unauditable processing
-lives (§req:constraints). Where the front end is SDR-only — the
-reference fleet's pre-Dynacal panels cannot accept PQ/HLG at all
-(§req:problem-statement) — the contract is a pure gamma decode: prefer
-gamma 2.4 over 2.2 (better code allocation in the 1–20 cd/m² band when
-stretched over 1000 cd/m²) and a 12-bit link over 10-bit, since 10-bit
-gamma across that range quantizes visibly on gradients. Chroma
-subsampling (4:2:2) is tolerated but 4:4:4 is preferred. **Why no
-custom exponent:** a power law's code allocation barely improves with
-exponent, and a nonstandard decode state defeats on-site auditability.
+The signal contract itself — the processor lockdown state a config is
+valid for, and the link-encoding guidance — is umbrella policy. This
+component records it: the intended state from the show manifest (EOTF,
+intensity, processing disabled) is emitted into the generated config's
+metadata so operators can restore and audit it, and sessions can diff
+live state against it.
 
 ## White point policy §spec:white-point
 
 *Status: complete*
 
 When the wall's calibrated white differs from the content white (D65),
-the config applies one of two explicit policies, selected in
-the show manifest and recorded in the output:
+the config applies one of two explicit policies, selected in the show
+manifest and recorded in the output:
 
 - **adapted** (default): chromatic adaptation maps content white to the
   wall's native white. Preserves full brightness; standard practice.
@@ -238,184 +168,41 @@ the show manifest and recorded in the output:
 adaptation transform silently via library defaults. The choice is
 visible on camera and must be a recorded decision, not a side effect.
 
-## Verification §spec:verification
+## Predictions §spec:verification
 
 *Status: not started*
 
-Characterization is a checkable claim, not a hope. The closed loop:
-this repository generates probe patches with predicted on-wall values
-for a given config (a stable predictions file — the handoff contract);
-Stilb sessions play them through the real chain and measure
-(§spec:measurement-loop); OLE-Toolset compares measured against
-predicted and renders the report. A wall passes when in-gamut,
-sub-peak patches measure within **ΔE2000 ≤ 2 average, ≤ 5 maximum**,
-and a neutral scene-linear ramp measures an end-to-end exponent of 1.0
-within measurement tolerance (§req:success-criteria) — the latter
-guards the unity-system-gamma property against regression. The
-thresholds are policy set here; the verdict is computed by the
-independent judge (§spec:measurement-loop, ownership split). Round-trip
-unit tests validate each generated transform against reference
-implementations (colour-science) at build time.
-
-**Why:** the model (xy primaries + ideal EOTF + additivity) is known to
-be violated by LED walls in the tail (PWM chromaticity shift at low
-drive, near-black response). Only measurement through the deployed
-chain bounds the real error.
+This component's share of the verification loop is prediction: for a
+given generated config, emit probe patch imagery and a documented,
+stable predictions file (config hash included per §spec:provenance) —
+the handoff contract consumed by color-wrangler sessions and analyzed by
+OLE-Toolset against the umbrella's thresholds (ΔE2000 ≤ 2 avg / ≤ 5
+max, unity exponent). Round-trip unit tests validate each generated
+transform against reference implementations (colour-science) at build
+time.
 
 ## Artifact provenance §spec:provenance
 
 *Status: complete*
 
-Every artifact in the pipeline records the sha256 content hashes of
-its inputs, binding the chain as it is built:
-
-- The show manifest's promotion pointer is `{file, sha256}` of the
-  measurement artifact of record (§spec:characterization-model).
-- The generated config's metadata records both input hashes and the
-  generator version; generation refuses when the promotion hash does
-  not match the measurement artifact on disk.
-- Prediction files record the config's hash; verification reports
-  record the prediction and measurement hashes and the live processor
-  snapshot.
-
-Any config found on a show machine is therefore traceable to the
-exact measurements and decisions that produced it, and *checkable*:
-if the current files no longer hash to what the config records, the
-config is stale and demonstrably so.
-
-**Why hashes and not signatures:** the threat model is error and
-drift, not adversaries. sha256 over file bytes via the standard
-library — no keys, no PKI, no new dependencies. **Consequence:**
-generated artifacts are byte-deterministic (no embedded generation
-timestamps), which the determinism requirement
-(§req:success-criteria) already demands — hashing and reproducibility
-enforce each other.
-
-## Closed-loop measurement §spec:measurement-loop
-
-*Status: not started*
-
-A measurement session is one command run with the wall powered and the
-instrument aimed. Sessions come in two modes over one shared core
-(contract audit, ambient gate, drive, settle, read, log):
-
-- **`characterize`** — drives a fixed, versioned, *device-referred*
-  patch protocol (full-drive R/G/B/W, black, shadow-dense per-channel
-  ramps, Y/C/M additivity triad, gray tracking ramp — raw code values,
-  no OCIO in the loop, since characterization precedes any config) and
-  emits the immutable measurements artifact
-  (§spec:characterization-model). The patch protocol is ours: defined
-  in MEASUREMENT.md, versioned with the tool.
-- **`verify`** — drives config-derived probe patches against the
-  generator's predictions and invokes the ΔE report
-  (§spec:verification). Sessions are re-runnable in minutes, making
-  pre-show drift checks routine (§req:user-stories).
-
-**Ownership split — four layers, with a file at every seam
-(§spec:provenance):**
-
-| Layer | Repo | Role |
-|---|---|---|
-| Generate | ocio-display-gen | Manifest + measurements → OCIO config + predictions |
-| Measure | Stilb (sibling, to be created) | Gated sessions: `characterize` / `verify` → measurement files |
-| Judge | OLE-Toolset | Independent analysis and reports: display-native precision (ETC analysis) and predictions-vs-measured ΔE |
-| Drive/read | bmd-signal-gen, pydecklink, colour-specio | Device layers |
-
-**Stilb** (the CGS unit of luminance: the product is measured light;
-the CLI users type is `stilb characterize` / `stilb verify`) owns
-everything that touches hardware, depending on bmd-signal-gen,
-colour-specio, and the Tessera read-only client. Stilb is also the
-umbrella name for the whole workflow — *characterization-based color
-management for real-time playback on LED surfaces* — of which this
-repository is the generator component. This repository keeps
-everything that needs OCIO semantics and no hardware: generation and
-prediction. **Why characterize and verify share one tool:** they
-share the session machinery; splitting them would force duplication
-or a framework. Session workstreams migrate to Stilb's governance at
-its creation; Stilb may absorb OLE-Toolset's existing session
-skeleton (TPG controller, measure loop), adding the gates it lacks.
-
-**Why judging is a separate layer:** OLE-Toolset validates *either*
-this pipeline *or* a display-side calibration — the referee is
-independent of the correction under test, so a verdict about our
-compensation is rendered by a tool with no stake in it. Its ETC
-analysis (colorimetric precision relative to the display's native
-space: primary matrix validity, linearity, black behavior) is also
-the escalation judge for §spec:characterization-model — it answers
-whether a 3×3 + curve model suffices. Comparison and reporting need
-no OCIO; prediction needs no instrument — the boundary is natural.
-
-Session flow, each stage observable in the session log:
-
-- **Contract audit** — snapshot the processor's state read-only
-  (Tessera HTTP API for Brompton) and diff against the recorded signal
-  contract (§spec:signal-contract); refuse to measure when they
-  diverge. Per patch batch, read back the processor's input metadata
-  and confirm the wire format matches the session's declared format.
-- **Provenance gate** (`verify` mode) — refuse to measure against a
-  config whose recorded input hashes do not match the files on disk
-  (§spec:provenance): a stale config would produce a report about a
-  characterization that no longer exists.
-- **Ambient gate** — the session opens and closes with a black-floor
-  reading (wall showing black; reflected ambient plus panel leakage)
-  and records it with the measurements. Characterization-grade
-  sessions refuse when the floor exceeds the budget implied by the
-  dark-patch ΔE tolerance; drift checks instead compare the live
-  floor against the one recorded at characterization, so ambient
-  changes cannot alias into apparent drift. Ambient is recorded and
-  gated, never compensated: a display cannot emit negative light to
-  cancel reflection, and baking a venue's ambient into the
-  characterization poisons the config everywhere else.
-- **Patch drive** — display patches via bmd-signal-gen on a DeckLink
-  device, using its live color-update surface; probe patch sets
-  (§spec:verification) are emitted in a format bmd-signal-gen consumes
-  directly. The session explicitly declares pixel format and EOTF
-  signaling — bmd-signal-gen defaults to PQ InfoFrames, which would
-  fault an SDR-contract wall (§req:constraints), so SDR walls are
-  driven with explicit SDR signaling.
-- **Instrument read** — settle delay, then a triggered single
-  measurement returning XYZ via colour-specio (Colorimetry Research
-  family: CR-300 for characterization-grade sessions, CR-120 for
-  drift checks — §req:constraints). colour-specio's virtual
-  instruments back hardware-free session tests.
-- **Report** — the session ends by producing the measurements file and
-  invoking the ΔE report; pass/fail per §spec:verification thresholds.
-
-**Why patches ride the show chain, not the processor's generator:**
-the internal generator injects downstream of input decode, bypassing
-HDMI/SDI receive, YCbCr conversion, range handling, and bit-depth
-truncation — it characterizes a system the show signal never
-traverses, violating the end-to-end black box
-(§spec:characterization-model). Its only role is manual
-troubleshooting, documented in the measurement guide.
-
-**Why the processor is read-only:** auditability. The tool observes
-and refuses; it never mutates show hardware, so a session can run
-against a live rig without risk.
-
-**Why no iteration:** measure-fit-remeasure convergence loops are a
-control-systems project, not glue. A session characterizes or
-verifies once and reports; escalation (fitted 1D LUTs,
-§spec:characterization-model) is a human decision consuming the same
-measurements file.
-
-External systems are referenced, not re-specified: bmd-signal-gen owns
-patch rendering and wire-format correctness (its spec documents the
-validated formats; sessions shall refuse formats not yet validated
-there), pydecklink owns device access, and colour-specio owns
-instrument communication (consumed at a pinned version — a git SHA
-until upstream's current API ships to PyPI — not forked; its
-`measure()` surface is the driver contract, and upstream is the venue
-for fixes: bench-confirmed asks are a fresh PyPI release and a missing
-scipy dependency declaration).
+This component implements the generate-layer links of the umbrella's
+hash chain: sha256 over file bytes via the standard library. The show
+manifest's promotion pointer is verified against the measurements
+artifact before generation (mismatch refuses, naming both digests);
+the generated config's metadata records both input hashes and the
+generator version as greppable `Provenance:` lines; predictions record
+the config's hash. Generated output is byte-deterministic (no embedded
+timestamps) — hashing and the determinism requirement enforce each
+other. Metadata-bound strings reject unprintable characters
+(`str.isprintable()`), preventing forged provenance lines via
+serialized control characters or Unicode line separators.
 
 ## Scope boundaries §spec:non-goals
 
 *Status: complete*
 
-Out of scope: processor-internal correction, per-panel uniformity,
-temporal/PWM artifacts, camera-side ICVFX calibration (moiré, in-camera
-metamerism — see OpenVPCal for that problem), multi-wall config
-merging (OCIO 2.5 config-merge is preview-status; revisit when stable),
-and generalized instrument/playout abstraction frameworks — drivers
-stay pinned to the hardware in hand (§spec:measurement-loop).
+Umbrella non-goals apply. Additionally out of scope for this
+component: instrument and signal I/O of any kind (sessions own
+hardware), report rendering (OLE-Toolset owns validation reports), and multi-wall
+config merging (OCIO 2.5 config-merge is preview-status; revisit when
+stable).
