@@ -136,8 +136,9 @@ def wall_native_to_xyz_matrix(
 
 
 def ap0_to_xyz_d65_matrix() -> npt.NDArray[np.float64]:
-    """ACES2065-1 → CIE XYZ (D65-adapted, Bradford) — the reference for
-    the view transform's AP0 → display-reference builtin."""
+    """ACES2065-1 → CIE XYZ (D65-adapted, Bradford), built in colour-
+    science — the independent reference for the AP0 → display-reference
+    builtin the generator takes from OCIO."""
     ap0 = colour.RGB_COLOURSPACES["ACES2065-1"]
     cat = colour.adaptation.matrix_chromatic_adaptation_VonKries(
         colour.xy_to_XYZ(ap0.whitepoint),

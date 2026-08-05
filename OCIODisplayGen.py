@@ -428,6 +428,28 @@ def _shoulder_overflow_transform() -> OCIO.LogCameraTransform:
     )
 
 
+def _drive_space_matrix(
+    characterization: DisplayCharacterization,
+    chromatic_adaptation_transform: str,
+) -> npt.NDArray[np.float64]:
+    """Display-reference XYZ → wall drive space, where 1.0 is full
+    drive.
+
+    The VP Radiometric view and the probe predictor's inverse are the
+    same matrix by construction: predictions describe the rendering the
+    config performs only while both sides agree, and nothing else would
+    catch them diverging — the full-drive patches would quietly stop
+    landing on the measured gamut boundary.
+    """
+    return np.asarray(
+        np.diag([REFERENCE_LUMINANCE / characterization.peak_luminance] * 3 + [1.0])
+        @ create_display_xyz_to_native_matrix(
+            characterization, chromatic_adaptation_transform
+        ),
+        dtype=np.float64,
+    )
+
+
 def create_vp_radiometric_view_transform(
     characterization: DisplayCharacterization,
     nits_anchor: float,
@@ -527,11 +549,7 @@ def create_vp_radiometric_view_transform(
     # Stage 4: into drive space — wall native RGB where 1.0 = full
     # drive. Reuses the display colorspace's exact policy matrix so the
     # view and colorspace compose transparently.
-    drive = np.diag(
-        [REFERENCE_LUMINANCE / peak] * 3 + [1.0]
-    ) @ create_display_xyz_to_native_matrix(
-        characterization, chromatic_adaptation_transform
-    )
+    drive = _drive_space_matrix(characterization, chromatic_adaptation_transform)
     group.appendTransform(_matrix_transform(drive))
 
     # Stage 5: above-peak overflow policy, per channel in drive space.
@@ -1506,27 +1524,12 @@ def _probe_patch_set() -> Tuple[ProbePatch, ...]:
 PROBE_PATCHES = _probe_patch_set()
 
 
-def _ap0_to_display_reference_matrix() -> npt.NDArray[np.float64]:
-    """ACES2065-1 → display-reference CIE XYZ (D65-adapted, Bradford):
-    the numpy equivalent of the view transform's
-    AP0_TO_XYZ_D65_BUILTIN, used to invert probe patches from the
-    wall's drive space back to the content that produces them."""
-    ap0 = colour.RGB_COLOURSPACES["ACES2065-1"]
-    cat_matrix = colour.adaptation.matrix_chromatic_adaptation_VonKries(
-        colour.xy_to_XYZ(ap0.whitepoint),
-        colour.xy_to_XYZ(np.array(D65_WHITE_XY)),
-        transform="Bradford",
-    )
-    return np.asarray(cat_matrix @ ap0.matrix_RGB_to_XYZ, dtype=np.float64)
-
-
-def _drive_to_scene_linear_matrix(
+def _drive_to_display_reference_matrix(
     characterization: DisplayCharacterization,
-    nits_anchor: float,
     chromatic_adaptation_transform: str,
 ) -> npt.NDArray[np.float64]:
-    """Wall drive fraction → scene-linear content, the inverse of the VP
-    Radiometric chain outside the gamut compressor.
+    """Wall drive fraction → display-reference XYZ: the inverse of the VP
+    Radiometric chain's drive-space stage.
 
     Patches are stated in drive space because that is where a probe set
     is meaningful — full drive is the wall's boundary, half drive its
@@ -1535,16 +1538,12 @@ def _drive_to_scene_linear_matrix(
     the compressor then moves are predicted from the config itself, not
     from this matrix.
     """
-    drive = (
-        np.diag([REFERENCE_LUMINANCE / characterization.peak_luminance] * 3)
-        @ create_display_xyz_to_native_matrix(
-            characterization, chromatic_adaptation_transform
-        )[:3, :3]
-    )
     return np.asarray(
-        np.linalg.inv(_ap0_to_display_reference_matrix())
-        @ np.linalg.inv(drive)
-        * (REFERENCE_LUMINANCE / nits_anchor),
+        np.linalg.inv(
+            _drive_space_matrix(characterization, chromatic_adaptation_transform)[
+                :3, :3
+            ]
+        ),
         dtype=np.float64,
     )
 
@@ -1552,8 +1551,9 @@ def _drive_to_scene_linear_matrix(
 def _apply_rgb(
     processor: "OCIO.CPUProcessor", rgb: npt.NDArray[np.floating[Any]]
 ) -> npt.NDArray[np.float64]:
-    """One RGB triple through an OCIO CPU processor."""
-    pixel = np.asarray(rgb, dtype=np.float32).copy()
+    """One RGB triple through an OCIO CPU processor. The buffer is a
+    private copy: applyRGB writes in place."""
+    pixel = np.array(rgb, dtype=np.float32)
     processor.applyRGB(pixel)
     return pixel.astype(np.float64)
 
@@ -1563,8 +1563,8 @@ def predict_probe_patches(
     display: str,
     characterization: DisplayCharacterization,
     nits_anchor: float,
-    view: str = VP_RADIOMETRIC_VIEW,
-    chromatic_adaptation_transform: str = "CAT02",
+    view: str,
+    chromatic_adaptation_transform: str,
 ) -> Tuple[PatchPrediction, ...]:
     """
     Predict on-wall colorimetry for the probe set through the generated
@@ -1573,8 +1573,12 @@ def predict_probe_patches(
     Each patch runs forward through the config twice: scene reference →
     (display, view) gives the code values the wall receives, and the
     display colorspace → display reference gives the XYZ those code
-    values produce. Predictions therefore come from the same transforms
-    the runtime executes — no second implementation to drift.
+    values produce. Inverting a drive-space patch back to the content
+    that produces it takes the config's own display-reference → scene-
+    reference leg. Predictions therefore come from the same transforms
+    the runtime executes — no second implementation to drift, and no
+    assumption about which scene reference the base config uses
+    (§spec:config-structure).
 
     Predictions target the default rendering (VP Radiometric): it is the
     one making a radiometric claim, so it is the one a measurement can
@@ -1590,13 +1594,18 @@ def predict_probe_patches(
         scene_reference, display, view, OCIO.TRANSFORM_DIR_FORWARD
     ).getDefaultCPUProcessor()
     decode = config.getProcessor(display, display_reference).getDefaultCPUProcessor()
-    to_scene_linear = _drive_to_scene_linear_matrix(
-        characterization, nits_anchor, chromatic_adaptation_transform
+    to_scene_reference = config.getProcessor(
+        display_reference, scene_reference
+    ).getDefaultCPUProcessor()
+    to_display_reference = _drive_to_display_reference_matrix(
+        characterization, chromatic_adaptation_transform
     )
+    anchor_scale = REFERENCE_LUMINANCE / nits_anchor
 
     predictions = []
     for patch in PROBE_PATCHES:
-        scene_linear = to_scene_linear @ np.asarray(patch.drive, dtype=np.float64)
+        content = to_display_reference @ np.asarray(patch.drive, dtype=np.float64)
+        scene_linear = _apply_rgb(to_scene_reference, content) * anchor_scale
         emitted = _apply_rgb(encode, scene_linear)
         # Code values are a signal, not a float: clamp to the legal
         # range and land them on the probe imagery's grid, so the
