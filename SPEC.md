@@ -242,14 +242,18 @@ visible on camera and must be a recorded decision, not a side effect.
 
 *Status: not started*
 
-Characterization is a checkable claim, not a hope. The system shall
-provide a closed-loop verification path: generate probe patches, play
-them through the real chain (media player → processor → wall), measure,
-and report against predicted values. A wall passes when in-gamut,
+Characterization is a checkable claim, not a hope. The closed loop:
+this repository generates probe patches with predicted on-wall values
+for a given config (a stable predictions file — the handoff contract);
+Stilb sessions play them through the real chain and measure
+(§spec:measurement-loop); OLE-Toolset compares measured against
+predicted and renders the report. A wall passes when in-gamut,
 sub-peak patches measure within **ΔE2000 ≤ 2 average, ≤ 5 maximum**,
 and a neutral scene-linear ramp measures an end-to-end exponent of 1.0
 within measurement tolerance (§req:success-criteria) — the latter
-guards the unity-system-gamma property against regression. Round-trip
+guards the unity-system-gamma property against regression. The
+thresholds are policy set here; the verdict is computed by the
+independent judge (§spec:measurement-loop, ownership split). Round-trip
 unit tests validate each generated transform against reference
 implementations (colour-science) at build time.
 
@@ -307,21 +311,39 @@ instrument aimed. Sessions come in two modes over one shared core
   (§spec:verification). Sessions are re-runnable in minutes, making
   pre-show drift checks routine (§req:user-stories).
 
-**Ownership split:** session tooling (both modes — everything that
-touches hardware) lives in a sibling repository named **Stilb** (the
-CGS unit of luminance: the product is measured light, and the CLI
-users type is `stilb characterize` / `stilb verify`), depending on
-bmd-signal-gen, colour-specio, and the Tessera read-only client.
-Stilb is also the umbrella name for the whole workflow —
-*characterization-based color management for real-time playback on
-LED surfaces* — of which this repository is the generator component. This repository keeps everything
-that needs OCIO semantics and no hardware: generation, prediction,
-and the ΔE report. The seam at every stage is a file
-(§spec:provenance). **Why:** characterize and verify share the
-session machinery (splitting them would force duplication or a
-framework), while the generator stays hardware-free and fully
-testable without a photon. Session workstreams migrate to the
-sibling's governance at its creation.
+**Ownership split — four layers, with a file at every seam
+(§spec:provenance):**
+
+| Layer | Repo | Role |
+|---|---|---|
+| Generate | ocio-display-gen | Manifest + measurements → OCIO config + predictions |
+| Measure | Stilb (sibling, to be created) | Gated sessions: `characterize` / `verify` → measurement files |
+| Judge | OLE-Toolset | Independent analysis and reports: display-native precision (ETC analysis) and predictions-vs-measured ΔE |
+| Drive/read | bmd-signal-gen, pydecklink, colour-specio | Device layers |
+
+**Stilb** (the CGS unit of luminance: the product is measured light;
+the CLI users type is `stilb characterize` / `stilb verify`) owns
+everything that touches hardware, depending on bmd-signal-gen,
+colour-specio, and the Tessera read-only client. Stilb is also the
+umbrella name for the whole workflow — *characterization-based color
+management for real-time playback on LED surfaces* — of which this
+repository is the generator component. This repository keeps
+everything that needs OCIO semantics and no hardware: generation and
+prediction. **Why characterize and verify share one tool:** they
+share the session machinery; splitting them would force duplication
+or a framework. Session workstreams migrate to Stilb's governance at
+its creation; Stilb may absorb OLE-Toolset's existing session
+skeleton (TPG controller, measure loop), adding the gates it lacks.
+
+**Why judging is a separate layer:** OLE-Toolset validates *either*
+this pipeline *or* a display-side calibration — the referee is
+independent of the correction under test, so a verdict about our
+compensation is rendered by a tool with no stake in it. Its ETC
+analysis (colorimetric precision relative to the display's native
+space: primary matrix validity, linearity, black behavior) is also
+the escalation judge for §spec:characterization-model — it answers
+whether a 3×3 + curve model suffices. Comparison and reporting need
+no OCIO; prediction needs no instrument — the boundary is natural.
 
 Session flow, each stage observable in the session log:
 

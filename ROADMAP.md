@@ -7,38 +7,47 @@ measurable. Runtime back-compat (version tiers) and model refinement
 
 ## Verification harness §road:verification-harness
 
+The report/verdict tool re-homed to OLE-Toolset (the independent
+judge — §spec:verification, §spec:measurement-loop ownership split);
+this repository ships predictions and their file format as the
+handoff contract.
+
 ### Probe patches and predictions §road:probe-patches
 
 Generate probe patch imagery with predicted on-wall XYZ values for a
-given generated config. §spec:verification.
-
-### ΔE report §road:delta-e-report
-
-Compare a measured-patch data file against predictions and produce a
-ΔE report with pass/fail thresholds. §spec:verification. Depends on
-§road:probe-patches.
+given generated config, emitting a documented, stable predictions
+file (config hash included per §spec:provenance) as the contract
+consumed by OLE-Toolset. §spec:verification.
 
 ### Measurement guide §road:measurement-guide
 
 Write a measurement procedure guide (MEASUREMENT.md): processor
 state lockdown and warm-up, generation patch set (primaries, white,
-black, per-channel ramps, additivity check), validation patch set
-through the deployed chain, and escalation criteria (1D shaper LUTs,
-corrective 3D LUT) keyed to §spec:characterization-model and
-§spec:verification. Depends on §road:delta-e-report.
+black, per-channel ramps, additivity check), shuffled patch
+presentation with an unshuffle key (thermal-drift decorrelation, per
+OLE-Toolset practice), validation patch set through the deployed
+chain, and escalation criteria (1D shaper LUTs, corrective 3D LUT,
+judged by OLE-Toolset's native-precision analysis) keyed to
+§spec:characterization-model and §spec:verification. Depends on
+§road:probe-patches.
 
-**Verify:** Feed the harness a measurement file equal to its own
-predictions and confirm ΔE ≈ 0 and a passing report against the
-ΔE2000 ≤ 2 avg / ≤ 5 max and unity-exponent thresholds; perturb one
-patch and confirm the report flags it. Confirm the measurement guide
-walks a reader from patch generation to a passing report using only
-shipped tooling.
+**Verify:** Predictions for the sample config match colour-science
+reference computation within float tolerance, and the predictions
+file round-trips (parse → re-emit byte-identical) with the config
+hash present. Against a synthetic measurement file equal to the
+predictions, a ΔE2000 comparison (test-level, colour-science)
+reports ≈ 0 and the unity-exponent criterion holds; a perturbed
+patch is flagged. Confirm the measurement guide walks a reader from
+patch generation to a rendered OLE-Toolset report using only shipped
+tooling (OLE-Toolset invocation documented, not vendored).
 
 ## Closed-loop measurement §road:closed-loop-measurement
 
-Session workstreams in this section migrate to the sibling session
-tool's governance at its repo creation (§spec:measurement-loop
-ownership split); prediction and report tooling stay here. The
+Session workstreams in this section migrate to Stilb's governance
+at its repo creation (§spec:measurement-loop ownership split);
+prediction tooling stays here; report tooling is OLE-Toolset's.
+Stilb may absorb OLE-Toolset's session skeleton (TPG controller,
+measure loop), adding the gates it lacks. The
 sibling is named **Stilb** (decided 2026-08-04; PyPI name confirmed
 available).
 
@@ -54,9 +63,9 @@ metadata vs. declared wire format). §spec:measurement-loop.
 Add the one-command measurement session: contract audit gate, patch
 drive via bmd-signal-gen's live color-update API on a DeckLink,
 instrument reads behind a Colorimetry Research driver contract, and
-emission of the measurements file consumed by the ΔE report.
-§spec:measurement-loop. Depends on §road:probe-patches,
-§road:delta-e-report, §road:processor-state-snapshot. Blocked in part
+emission of the measurements file consumed by OLE-Toolset's
+report tooling. §spec:measurement-loop. Depends on
+§road:probe-patches and §road:processor-state-snapshot. Blocked in part
 — sessions on SDI / 10-bit YCbCr links await wire-format validation
 upstream in bmd-signal-gen (RGB 12-bit is validated today); unblocked
 per format as bmd-signal-gen's spec records validation.
@@ -71,7 +80,8 @@ ambient floor. §spec:measurement-loop,
 
 **Verify:** With a mock instrument driver that returns the session's
 own predictions: run the session command end-to-end and confirm it
-produces a measurements file and a passing ΔE report; perturb the
+produces a measurements file that OLE-Toolset's comparison judges
+as passing (test-level ΔE in the interim); perturb the
 recorded signal contract (e.g., wrong gamma in yaml vs. live
 processor) and confirm the session refuses to measure; declare a wire
 format the live input metadata contradicts (e.g., 8-bit negotiated)
