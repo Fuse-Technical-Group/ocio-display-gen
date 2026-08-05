@@ -4,9 +4,12 @@
 # It uses the colour-science library to create the colorspace and the PyOpenColorIO
 # library to create the OCIO config
 
+import hashlib
+import hmac
 import os
+import re
 import sys
-from typing import Any, Dict, Optional, Tuple, cast
+from typing import Any, Dict, NamedTuple, Optional, Tuple, cast
 
 import colour
 import numpy as np
@@ -113,6 +116,12 @@ ACES2_BASE_CONFIG_URI = "ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5"
 # colorimetrically exact within gamut, at the cost of peak brightness and
 # possible single-channel clipping when wall white differs from D65.
 WHITE_POINT_POLICIES = ("adapted", "absolute")
+
+
+def unknown_policy_message(kind: str, value: str, valid: Tuple[str, ...]) -> str:
+    """Shared policy-enum failure message, so the validator's warnings
+    and the transform builders' errors cannot drift."""
+    return f"Unknown {kind} '{value}'; valid values: {', '.join(valid)}"
 
 
 class DisplayCharacterization:
@@ -228,8 +237,9 @@ def create_display_xyz_to_native_matrix(
     white_point_policy = characterization.white_point_policy
     if white_point_policy not in WHITE_POINT_POLICIES:
         raise ValueError(
-            f"Unknown white point policy '{white_point_policy}'; "
-            f"valid values: {', '.join(WHITE_POINT_POLICIES)}"
+            unknown_policy_message(
+                "white point policy", white_point_policy, WHITE_POINT_POLICIES
+            )
         )
 
     primaries = np.array(
@@ -451,8 +461,9 @@ def create_vp_radiometric_view_transform(
     """
     if overflow_policy not in OVERFLOW_POLICIES:
         raise ValueError(
-            f"Unknown overflow policy '{overflow_policy}'; "
-            f"valid values: {', '.join(OVERFLOW_POLICIES)}"
+            unknown_policy_message(
+                "overflow policy", overflow_policy, OVERFLOW_POLICIES
+            )
         )
     # A non-positive or non-finite anchor would generate a validating
     # config that emits black or inverted signal — fail loud instead.
@@ -697,63 +708,306 @@ def register_display(
     return display_name
 
 
-# YAML Configuration Functions
-def load_config_from_yaml(config_path: str) -> Dict[str, Any]:
-    """Load display configuration from YAML file."""
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f)
-        return config
-    except FileNotFoundError:
-        print(f"❌ Error: Configuration file '{config_path}' not found.")
-        print(
-            "   Please create a 'display_config.yaml' file with your display "
-            "measurements."
+# Input loading (§spec:characterization-model): a human-authored
+# show manifest plus the machine-format measurements artifact its
+# promotion pointer names, consumed together.
+SHOW_MANIFEST_FILE = "show_manifest.yaml"
+
+# Generator version recorded in provenance metadata (§spec:provenance).
+# A module constant kept equal to pyproject's [project] version — the
+# project is run as a script (`uv run ./OCIODisplayGen.py`), not
+# installed as a distribution, so importlib.metadata has no package to
+# query. test_provenance.py pins this to pyproject.toml.
+GENERATOR_VERSION = "0.1.0"
+
+# sha256 hex digest: 64 lowercase hex characters after normalization.
+SHA256_HEX_PATTERN = re.compile(r"[0-9a-f]{64}")
+
+def reject_control_characters(value: str, what: str) -> str:
+    """
+    Refuse values destined for the generated config's description when
+    they contain unprintable characters (§spec:provenance). A newline —
+    or a Unicode line separator like U+2028, which OCIO's serializer
+    emits as a physical newline — could forge or garble the greppable
+    Provenance: block. str.isprintable() rejects all C0/C1 controls,
+    Unicode line/paragraph separators, and format characters
+    (including bidi overrides).
+
+    Raises:
+        ValueError: When value contains an unprintable character.
+    """
+    if not value.isprintable():
+        raise ValueError(
+            f"{what} must not contain unprintable characters (controls, "
+            f"line separators, format characters) — it is recorded "
+            f"verbatim in the generated config's description"
         )
-        sys.exit(1)
+    return value
+
+
+class Provenance(NamedTuple):
+    """Input identities recorded in the generated config
+    (§spec:provenance). File paths are as written in the show manifest's
+    file / as given to the loader — never absolutized, so recorded
+    metadata stays byte-deterministic across checkouts."""
+
+    show_manifest_file: str
+    show_manifest_sha256: str
+    measurements_file: str
+    measurements_sha256: str
+
+
+class PromotionPointer(NamedTuple):
+    """The show manifest's validated promotion pointer
+    (§spec:provenance): artifact path as written, the recorded digest
+    normalized to lowercase, and the path resolved against the
+    show manifest's directory."""
+
+    file: str
+    sha256: str
+    artifact_path: str
+
+
+def read_file_bytes(path: str, role: str) -> bytes:
+    """
+    A file's bytes, read once — callers hash and parse the same bytes,
+    so the parsed content is exactly what the hash attests
+    (§spec:provenance).
+
+    Raises:
+        ValueError: For an unreadable file.
+    """
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except OSError as e:
+        raise ValueError(f"{role} '{path}' is not readable: {e}") from e
+
+
+def enforce_promotion_hash(
+    pointer: PromotionPointer, artifact_bytes: bytes, manifest_path: str
+) -> str:
+    """
+    Enforce the promotion pointer's recorded hash over the artifact
+    bytes (§spec:provenance). The comparison uses hmac.compare_digest
+    as a cheap constant-time habit; the threat model is error and
+    drift, not adversaries.
+
+    Returns:
+        The artifact's actual sha256 hex digest.
+
+    Raises:
+        ValueError: On mismatch — the artifact is not the measurement
+            of record and generation must refuse.
+    """
+    actual = hashlib.sha256(artifact_bytes).hexdigest()
+    if not hmac.compare_digest(actual, pointer.sha256):
+        raise ValueError(
+            f"Measurements artifact '{pointer.file}' does not match the "
+            f"promotion pointer in '{manifest_path}': recorded sha256 "
+            f"{pointer.sha256}, actual sha256 {actual}. The artifact is "
+            f"not the measurement of record — refusing to generate "
+            f"(§spec:provenance)"
+        )
+    return actual
+
+
+def provenance_description(provenance: Provenance) -> str:
+    """Greppable provenance lines for the config's top-level
+    description (§spec:provenance)."""
+    return (
+        f"Provenance: show-manifest sha256={provenance.show_manifest_sha256} "
+        f"({provenance.show_manifest_file})\n"
+        f"Provenance: measurements sha256={provenance.measurements_sha256} "
+        f"({provenance.measurements_file})\n"
+        f"Provenance: generator ociodisplaygen {GENERATOR_VERSION}"
+    )
+
+
+def record_provenance(
+    config: "OCIO.Config",
+    provenance: Provenance,
+    show_description: Optional[str] = None,
+) -> None:
+    """Append the show identity (when decided) and provenance lines to
+    the config's top-level description, preserving the base config's
+    own description (§spec:provenance)."""
+    base = config.getDescription().rstrip()
+    lines = provenance_description(provenance)
+    if show_description is not None:
+        if not isinstance(show_description, str):
+            raise ValueError(
+                f"Show description must be a string, got "
+                f"{type(show_description).__name__}"
+            )
+        reject_control_characters(show_description, "Show description")
+        if show_description:
+            lines = f"Show: {show_description}\n{lines}"
+    config.setDescription(f"{base}\n\n{lines}" if base else lines)
+
+
+def parse_yaml_mapping(data: bytes, path: str, role: str) -> Dict[str, Any]:
+    """
+    Parse YAML bytes that must be a mapping.
+
+    Args:
+        data: File bytes (from read_file_bytes)
+        path: Source path for error messages
+        role: Human-readable role for error messages
+            (e.g. "Show manifest")
+
+    Raises:
+        ValueError: For invalid YAML or content that is not a mapping.
+    """
+    try:
+        parsed = yaml.safe_load(data)
     except yaml.YAMLError as e:
-        print(f"❌ Error parsing YAML file: {e}")
-        sys.exit(1)
+        raise ValueError(f"{role} '{path}' is not valid YAML: {e}") from e
+    if not isinstance(parsed, dict):
+        raise ValueError(f"{role} '{path}' must be a YAML mapping")
+    return cast(Dict[str, Any], parsed)
 
 
-def create_characterization_from_config(
-    config: Dict[str, Any],
+def resolve_measurements_pointer(
+    manifest: Dict[str, Any], manifest_path: str
+) -> PromotionPointer:
+    """
+    Validate the show manifest's promotion pointer and resolve it to
+    the measurements artifact of record (§spec:provenance).
+
+    The pointer is `measurements: {file, sha256}`; `file` resolves
+    relative to the show manifest's directory. This validates the
+    pointer's structure (keys present, well-formed digest); hash
+    enforcement is enforce_promotion_hash.
+
+    Raises:
+        ValueError: For a missing pointer, missing pointer keys, or a
+            malformed recorded digest.
+    """
+    pointer = manifest.get("measurements")
+    if not isinstance(pointer, dict):
+        raise ValueError(
+            f"Show manifest '{manifest_path}' has no 'measurements' "
+            "promotion pointer — expected 'measurements: {file, sha256}' "
+            "naming the measurements artifact of record (§spec:provenance)"
+        )
+    missing = [key for key in ("file", "sha256") if key not in pointer]
+    if missing:
+        raise ValueError(
+            f"Show manifest '{manifest_path}' promotion pointer is "
+            f"missing {', '.join(repr(key) for key in missing)} — expected "
+            "'measurements: {file, sha256}' (§spec:provenance)"
+        )
+    pointer_file = str(pointer["file"])
+    reject_control_characters(
+        pointer_file, f"Show manifest '{manifest_path}' promotion pointer file"
+    )
+    # The pointer path is recorded verbatim in shipped config metadata:
+    # absolute paths and traversal tie the audit trail to one machine's
+    # directory layout and leak it into distributed configs.
+    if os.path.isabs(pointer_file) or os.pardir in re.split(r"[\\/]", pointer_file):
+        raise ValueError(
+            f"Show manifest '{manifest_path}' promotion pointer file "
+            f"'{pointer_file}' must be a relative path inside the show manifest's "
+            f"file's directory (no absolute paths, no '..') — the pointer "
+            f"is recorded in shipped config metadata and must stay "
+            f"portable (§spec:provenance)"
+        )
+    recorded_raw = pointer["sha256"]
+    if not isinstance(recorded_raw, str):
+        raise ValueError(
+            f"Show manifest '{manifest_path}' promotion pointer sha256 "
+            f"must be a quoted string, got {type(recorded_raw).__name__} — "
+            f"YAML parses an unquoted digit-only digest as a number, "
+            f"corrupting it (§spec:provenance)"
+        )
+    recorded = recorded_raw.lower()
+    if not SHA256_HEX_PATTERN.fullmatch(recorded):
+        raise ValueError(
+            f"Show manifest '{manifest_path}' promotion pointer sha256 "
+            f"'{recorded_raw}' is malformed — expected a 64-character "
+            f"hex sha256 digest of '{pointer_file}' (§spec:provenance)"
+        )
+    return PromotionPointer(
+        file=pointer_file,
+        sha256=recorded,
+        artifact_path=os.path.join(
+            os.path.dirname(os.path.abspath(manifest_path)), pointer_file
+        ),
+    )
+
+
+def load_inputs(
+    manifest_path: str,
+) -> Tuple[Dict[str, Any], Dict[str, Any], Provenance]:
+    """
+    Load the show manifest and the measurements artifact it promotes,
+    enforcing the promotion hash (§spec:provenance). Each file is read
+    once; the bytes that are hashed are the bytes that are parsed.
+
+    Returns:
+        (manifest, measurements, provenance).
+
+    Raises:
+        ValueError: For an unreadable show manifest, a missing or
+            malformed promotion pointer, an unreadable artifact, or a
+            promotion-hash mismatch.
+    """
+    manifest_bytes = read_file_bytes(manifest_path, "Show manifest")
+    manifest = parse_yaml_mapping(manifest_bytes, manifest_path, "Show manifest")
+    pointer = resolve_measurements_pointer(manifest, manifest_path)
+    artifact_bytes = read_file_bytes(pointer.artifact_path, "Measurements artifact")
+    measurements_sha256 = enforce_promotion_hash(
+        pointer, artifact_bytes, manifest_path
+    )
+    measurements = parse_yaml_mapping(
+        artifact_bytes, pointer.artifact_path, "Measurements artifact"
+    )
+    provenance = Provenance(
+        show_manifest_file=manifest_path,
+        show_manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
+        measurements_file=pointer.file,
+        measurements_sha256=measurements_sha256,
+    )
+    return manifest, measurements, provenance
+
+
+def create_characterization(
+    manifest: Dict[str, Any], measurements: Dict[str, Any]
 ) -> DisplayCharacterization:
-    """Create DisplayCharacterization object from YAML config."""
+    """
+    Build a DisplayCharacterization from the two inputs: measured
+    values from the measurements artifact; naming, EOTF intent, white
+    point policy, and processor lockdown from the show manifest
+    (§spec:characterization-model).
+    """
+    show = manifest["show"]
 
-    display_config = config["display"]
+    # Display name composes from panel and processor identity
+    panel = show["led_panel"]
+    panel_name = f"{panel['manufacturer']} {panel['model']} ({panel['version']})"
 
-    # Generate display name from LED panel and processor
-    led_panel_config = display_config["led_panel"]
-    led_panel_name = (
-        f"{led_panel_config['manufacturer']} {led_panel_config['model']} "
-        f"({led_panel_config['version']})"
+    processor = show["led_processor"]
+    processor_name = (
+        f"{processor['manufacturer']} {processor['model']} ({processor['version']})"
     )
 
-    led_processor_config = display_config["led_processor"]
-    led_processor_name = (
-        f"{led_processor_config['manufacturer']} "
-        f"{led_processor_config['model']} ({led_processor_config['version']})"
-    )
+    char = DisplayCharacterization(f"{panel_name} + {processor_name}")
 
-    display_name = f"{led_panel_name} + {led_processor_name}"
-
-    char = DisplayCharacterization(display_name)
-
-    # Get colorimetry from display.led_panel.colorimetry
-    colorimetry_config = led_panel_config["colorimetry"]
-    primaries_config = colorimetry_config["primaries"]
+    # Measured colorimetry from the artifact
+    colorimetry = measurements["colorimetry"]
+    primaries = colorimetry["primaries"]
     char.primaries = {
-        "red": tuple(primaries_config["red"]),
-        "green": tuple(primaries_config["green"]),
-        "blue": tuple(primaries_config["blue"]),
+        "red": tuple(primaries["red"]),
+        "green": tuple(primaries["green"]),
+        "blue": tuple(primaries["blue"]),
     }
-    char.white_point = tuple(colorimetry_config["white_point"])
+    char.white_point = tuple(colorimetry["white_point"])
 
-    # Get luminance from display.led_panel.luminance
-    luminance_config = led_panel_config["luminance"]
-    char.black_level = luminance_config["black_level"]
-    char.peak_luminance = luminance_config["peak_luminance"]
+    # Measured luminance from the artifact
+    luminance = measurements["luminance"]
+    char.black_level = luminance["black_level"]
+    char.peak_luminance = luminance["peak_luminance"]
     # Guard the division: non-strict validation lets a zero black level
     # through with a warning.
     if char.black_level > 0:
@@ -761,30 +1015,26 @@ def create_characterization_from_config(
     else:
         char.contrast_ratio = float("inf")
 
-    # Get EOTF configuration from display.led_processor.configuration.eotf
-    if (
-        "configuration" not in led_processor_config
-        or "eotf" not in led_processor_config["configuration"]
-    ):
-        raise ValueError(
-            "Configuration must contain "
-            "'display.led_processor.configuration.eotf' section"
-        )
+    # Intended signal contract (§spec:signal-contract) is a decision:
+    # the lockdown state the config is valid for, distinct from the
+    # artifact's processor_state snapshot (what was read at
+    # measurement time).
+    contract = manifest.get("signal_contract")
+    if not isinstance(contract, dict) or "eotf" not in contract:
+        raise ValueError("Show manifest must contain a 'signal_contract.eotf' section")
+    eotf = contract["eotf"]
+    char.eotf_type = eotf["type"]
+    char.gamma_value = eotf.get("gamma_value", 2.4)
 
-    eotf_config = led_processor_config["configuration"]["eotf"]
-    char.eotf_type = eotf_config["type"]
-    char.gamma_value = eotf_config.get("gamma_value", 2.4)
-
-    # Processor signal-contract state (§spec:signal-contract). Optional:
-    # validate_config_data warns (or fails in strict mode) when absent.
-    processor_state = led_processor_config["configuration"]
-    intensity = processor_state.get("intensity")
+    # Processor lockdown state. Optional: validate_inputs warns (or
+    # fails in strict mode) when absent.
+    intensity = contract.get("intensity")
     char.processor_intensity = None if intensity is None else str(intensity)
-    char.processor_processing_disabled = processor_state.get("processing_disabled")
+    char.processor_processing_disabled = contract.get("processing_disabled")
 
     # White point policy is a generation decision, not a measurement, so
     # it lives under ocio:. Validated at matrix-build time.
-    char.white_point_policy = config.get("ocio", {}).get(
+    char.white_point_policy = manifest.get("ocio", {}).get(
         "white_point_policy", "adapted"
     )
     return char
@@ -837,24 +1087,89 @@ def load_validation_settings() -> Dict[str, Any]:
     return validation_settings
 
 
-def validate_config_data(config: Dict[str, Any]) -> bool:
-    """Validate configuration data from YAML file."""
+def validate_manifest_data(
+    manifest: Dict[str, Any],
+    validation_config: Dict[str, Any],
+    strict_mode: bool,
+) -> bool:
+    """
+    Validate the show manifest's human decisions: policy enums and the intended
+    processor lockdown state (§spec:signal-contract). Plausibility of
+    measured values belongs to validate_measurements_data.
+    """
+    ocio_settings = manifest.get("ocio", {})
 
-    # Load validation settings
-    validation_config = load_validation_settings()
+    # Policy enums (§spec:white-point, §spec:view-transform). Non-strict
+    # mode only defers the failure: the transform builders raise on the
+    # same values at generation time.
+    white_point_policy = ocio_settings.get("white_point_policy", "adapted")
+    if white_point_policy not in WHITE_POINT_POLICIES:
+        print(
+            "❌ Warning: "
+            + unknown_policy_message(
+                "white point policy", white_point_policy, WHITE_POINT_POLICIES
+            )
+        )
+        if strict_mode:
+            return False
+    else:
+        print(f"✓ White point policy: {white_point_policy}")
 
-    # Get validation mode from display config (overrides validation settings)
-    strict_mode = config.get("validation", {}).get("strict_mode", False)
+    overflow_policy = ocio_settings.get("vp_radiometric", {}).get(
+        "overflow_policy", DEFAULT_OVERFLOW_POLICY
+    )
+    if overflow_policy not in OVERFLOW_POLICIES:
+        print(
+            "❌ Warning: "
+            + unknown_policy_message(
+                "overflow policy", overflow_policy, OVERFLOW_POLICIES
+            )
+        )
+        if strict_mode:
+            return False
+    else:
+        print(f"✓ Overflow policy: {overflow_policy}")
 
+    # Check processor signal-contract state (§spec:signal-contract): the
+    # config is only valid while the processor holds the recorded state,
+    # so a missing record leaves nothing to restore or audit.
+    if validation_config.get("check_processor_state", True):
+        contract = manifest.get("signal_contract", {})
+        for field, meaning in (
+            ("intensity", "locked processor intensity"),
+            ("processing_disabled", "color processing / dynamic features state"),
+        ):
+            if field in contract:
+                print(f"✓ Processor {field} recorded: {contract[field]}")
+                continue
+            print(
+                f"❌ Warning: 'signal_contract.{field}' "
+                f"({meaning}) is missing — the signal contract cannot be "
+                f"recorded in the config metadata"
+            )
+            if strict_mode:
+                return False
+
+    return True
+
+
+def validate_measurements_data(
+    measurements: Dict[str, Any],
+    validation_config: Dict[str, Any],
+    strict_mode: bool,
+) -> bool:
+    """
+    Validate measurement plausibility from the measurements artifact:
+    chromaticity ranges, white point CCT/duv, luminance, contrast, and
+    the EOTF-vs-brightness advisory (§spec:characterization-model).
+    """
     # Check primaries
     if validation_config.get("check_primaries", True):
         print(
             "Validating display primaries: basic chromaticity range check "
             "(not a true spectral locus test)..."
         )
-        for color, coords in config["display"]["led_panel"]["colorimetry"][
-            "primaries"
-        ].items():
+        for color, coords in measurements["colorimetry"]["primaries"].items():
             x, y = coords
             # Basic range check
             if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0 and x + y <= 1.0):
@@ -876,7 +1191,7 @@ def validate_config_data(config: Dict[str, Any]) -> bool:
 
     # Check white point
     if validation_config.get("check_white_point", True):
-        x, y = config["display"]["led_panel"]["colorimetry"]["white_point"]
+        x, y = measurements["colorimetry"]["white_point"]
 
         # Basic range check
         if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
@@ -944,8 +1259,8 @@ def validate_config_data(config: Dict[str, Any]) -> bool:
 
     # Check luminance values
     if validation_config.get("check_luminance", True):
-        black_level = config["display"]["led_panel"]["luminance"]["black_level"]
-        peak_luminance = config["display"]["led_panel"]["luminance"]["peak_luminance"]
+        black_level = measurements["luminance"]["black_level"]
+        peak_luminance = measurements["luminance"]["peak_luminance"]
 
         if black_level <= 0:
             # A measured black level is never exactly zero; zero usually
@@ -978,11 +1293,9 @@ def validate_config_data(config: Dict[str, Any]) -> bool:
 
     # Check contrast ratio (skipped for non-positive black level, which
     # the luminance check above already reported).
-    black_level = float(config["display"]["led_panel"]["luminance"]["black_level"])
+    black_level = float(measurements["luminance"]["black_level"])
     if validation_config.get("check_contrast", True) and black_level > 0:
-        peak_luminance = float(
-            config["display"]["led_panel"]["luminance"]["peak_luminance"]
-        )
+        peak_luminance = float(measurements["luminance"]["peak_luminance"])
         contrast_ratio = peak_luminance / black_level
         min_contrast = validation_config.get("min_contrast_ratio", 100)
         max_contrast = validation_config.get("max_contrast_ratio", 10000)
@@ -998,40 +1311,19 @@ def validate_config_data(config: Dict[str, Any]) -> bool:
             else:
                 print(message)
 
-    # Check processor signal-contract state (§spec:signal-contract): the
-    # config is only valid while the processor holds the recorded state,
-    # so a missing record leaves nothing to restore or audit.
-    if validation_config.get("check_processor_state", True):
-        processor_state = config["display"]["led_processor"].get("configuration", {})
-        for field, meaning in (
-            ("intensity", "locked processor intensity"),
-            ("processing_disabled", "color processing / dynamic features state"),
-        ):
-            if field in processor_state:
-                print(f"✓ Processor {field} recorded: {processor_state[field]}")
-                continue
-            message = (
-                f"❌ Warning: 'display.led_processor.configuration.{field}' "
-                f"({meaning}) is missing — the signal contract cannot be "
-                f"recorded in the config metadata"
-            )
-            if strict_mode:
-                print(message)
-                return False
-            else:
-                print(message)
-
-    # Advisory: SDR EOTF usage with high brightness displays.
-    # Never fatal, even in strict mode: an SDR-gamma-only front end driving
-    # a bright wall is the reference use case (§req:problem-statement), and
-    # §spec:signal-contract prefers gamma 2.4 on SDR-only links. Strict mode
-    # escalates measurement-plausibility failures, not encoding preferences.
+    # Advisory: SDR EOTF usage with high brightness displays, against
+    # the artifact's processor-state snapshot (what was read at
+    # measurement time). Never fatal, even in strict mode: an
+    # SDR-gamma-only front end driving a bright wall is the reference
+    # use case (§req:problem-statement), and §spec:signal-contract
+    # prefers gamma 2.4 on SDR-only links. Strict mode escalates
+    # measurement-plausibility failures, not encoding preferences.
     if validation_config.get("warn_on_sdr_eotf", True):
-        peak_luminance = config["display"]["led_panel"]["luminance"]["peak_luminance"]
-        eotf_type = config["display"]["led_processor"]["configuration"]["eotf"]["type"]
+        peak_luminance = measurements["luminance"]["peak_luminance"]
+        eotf_type = measurements.get("processor_state", {}).get("eotf", {}).get("type")
         sdr_threshold = validation_config.get("sdr_warning_threshold", 400.0)
 
-        if peak_luminance > sdr_threshold:
+        if eotf_type is not None and peak_luminance > sdr_threshold:
             if eotf_type == "GAMMA":
                 print(
                     f"Note: GAMMA EOTF with high brightness "
@@ -1054,16 +1346,34 @@ def validate_config_data(config: Dict[str, Any]) -> bool:
                     f"({peak_luminance} cd/m²) - appropriate for HDR"
                 )
 
+    return True
+
+
+def validate_inputs(manifest: Dict[str, Any], measurements: Dict[str, Any]) -> bool:
+    """
+    Validate both inputs along the human/machine line
+    (§spec:characterization-model): manifest checks against the
+    show manifest, plausibility checks against the measurements
+    artifact. Strict mode comes from the show manifest.
+    """
+    validation_config = load_validation_settings()
+    strict_mode = manifest.get("validation", {}).get("strict_mode", False)
+
+    if not validate_manifest_data(manifest, validation_config, strict_mode):
+        return False
+    if not validate_measurements_data(measurements, validation_config, strict_mode):
+        return False
+
     print("✓ Configuration validation passed")
     return True
 
 
 def generate_output_filename(
-    config: Dict[str, Any], characterization: DisplayCharacterization
+    manifest: Dict[str, Any], characterization: DisplayCharacterization
 ) -> str:
-    """Generate output filename if not specified in config."""
+    """Generate output filename if not specified in the show manifest."""
 
-    ocio_config = config.get("ocio", {})
+    ocio_config = manifest.get("ocio", {})
 
     # Use specified output config if provided
     if "output_config" in ocio_config:
@@ -1074,10 +1384,10 @@ def generate_output_filename(
     return f"{display_name}_config.ocio"
 
 
-def create_base_ocio_config(config: Dict[str, Any]) -> "OCIO.Config":
+def create_base_ocio_config(manifest: Dict[str, Any]) -> "OCIO.Config":
     """Create base OCIO configuration using ocio:// scheme."""
 
-    base_config = config.get("ocio", {}).get("base_config", {})
+    base_config = manifest.get("ocio", {}).get("base_config", {})
     config_type = base_config.get("type", "studio")
     config_version = base_config.get("config_version", "v2.1.0")
     aces_version = base_config.get("aces_version", "v1.3")
@@ -1110,15 +1420,22 @@ def create_base_ocio_config(config: Dict[str, Any]) -> "OCIO.Config":
 
 def main():
     print("=== OCIO Display Generator ===")
-    config_file = "display_config.yaml"
-    print(f"Loading configuration from '{config_file}'...")
-    config = load_config_from_yaml(config_file)
+    print(f"Loading manifest from '{SHOW_MANIFEST_FILE}'...")
+    try:
+        manifest, measurements, provenance = load_inputs(SHOW_MANIFEST_FILE)
+    except ValueError as e:
+        print(f"❌ Error: {e}")
+        sys.exit(1)
+    print(
+        f"✓ Loaded measurements artifact '{provenance.measurements_file}' "
+        f"(promotion hash verified)"
+    )
     print("Validating configuration data...")
-    if not validate_config_data(config):
-        print("❌ Configuration validation failed. Please check your measurements.")
+    if not validate_inputs(manifest, measurements):
+        print("❌ Configuration validation failed. Please check your inputs.")
         sys.exit(1)
     print("Creating display characterization...")
-    characterization = create_characterization_from_config(config)
+    characterization = create_characterization(manifest, measurements)
     print(f"\nDisplay: {characterization.name}")
     print(f"Peak luminance: {characterization.peak_luminance} cd/m²")
     print(f"Black level: {characterization.black_level} cd/m²")
@@ -1136,7 +1453,7 @@ def main():
     print(f"White point policy: {characterization.white_point_policy}")
     # VP Radiometric settings are generation decisions, not measurements,
     # so they live under ocio: (§spec:view-transform).
-    vp_settings = config.get("ocio", {}).get("vp_radiometric", {})
+    vp_settings = manifest.get("ocio", {}).get("vp_radiometric", {})
     try:
         nits_anchor = float(vp_settings.get("nits_anchor", DEFAULT_NITS_ANCHOR))
     except (TypeError, ValueError):
@@ -1145,10 +1462,10 @@ def main():
     overflow_policy = vp_settings.get("overflow_policy", DEFAULT_OVERFLOW_POLICY)
     print(f"VP Radiometric nits anchor: {nits_anchor} cd/m²")
     print(f"VP Radiometric overflow policy: {overflow_policy}")
-    output_config_path = generate_output_filename(config, characterization)
+    output_config_path = generate_output_filename(manifest, characterization)
     try:
         print("\nCreating base OCIO config...")
-        ocio_config_obj = create_base_ocio_config(config)
+        ocio_config_obj = create_base_ocio_config(manifest)
         scene_reference, display_reference = derive_reference_spaces(ocio_config_obj)
         print(f"Scene reference space: {scene_reference}")
         print(f"Display reference space: {display_reference}")
@@ -1161,6 +1478,11 @@ def main():
             nits_anchor=nits_anchor,
             overflow_policy=overflow_policy,
         )
+        record_provenance(
+            ocio_config_obj,
+            provenance,
+            manifest.get("show", {}).get("description"),
+        )
         try:
             ocio_config_obj.validate()
         except Exception as exc:
@@ -1171,6 +1493,9 @@ def main():
             f.write(ocio_config_obj.serialize())
         print("\n✅ Successfully created OCIO config!")
         print(f"   Output file: {output_config_path}")
+        print("\nProvenance recorded in the config description:")
+        for line in provenance_description(provenance).splitlines():
+            print(f"   {line}")
         print(f"\nRegistered display: {display_name}")
         default_view = ocio_config_obj.getDefaultView(display_name)
         for view in ocio_config_obj.getViews(display_name):

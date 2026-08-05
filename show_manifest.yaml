@@ -1,0 +1,71 @@
+# SHOW MANIFEST — human-authored and reviewed (§spec:characterization-model).
+# Holds only human decisions: show naming, the intended signal contract,
+# OCIO targeting, and the promotion pointer to the measurements artifact
+# of record. Measured values live in that artifact and are never edited
+# by hand.
+
+# VALIDATION MODE
+# strict_mode true: validation failures stop the process.
+# strict_mode false: validation failures warn but continue.
+validation:
+  strict_mode: true
+
+# SHOW NAMING
+# Panel + processor identity as configured for show; composes the
+# registered display name:
+#   "ROE Black Pearl 2 (NS) (2018) + Brompton S8 (3.5.2)"
+show:
+  description: "FTG Stage 1"
+  led_panel:
+    manufacturer: "ROE"
+    model: "Black Pearl 2 (NS)"
+    version: "2018"              # Year, batch, or explicit version number
+  led_processor:
+    manufacturer: "Brompton"
+    model: "S8"
+    version: "3.5.2"             # Firmware or software version
+
+# INTENDED SIGNAL CONTRACT (§spec:signal-contract)
+# The processor lockdown state the generated config is valid for;
+# recorded in the config metadata for restore and audit.
+signal_contract:
+  eotf:
+    type: "GAMMA"      # "PQ", "HLG", or "GAMMA"
+    gamma_value: 2.4   # Only include if type is "GAMMA"
+  intensity: "100%"          # Locked intensity/brightness as configured
+                             # on the processor (percent or nits)
+  processing_disabled: true  # Color processing and dynamic features
+                             # (dynamic calibration, dynamic contrast,
+                             # overdrive, etc.) are disabled
+
+# PROMOTION POINTER (§spec:provenance)
+# The measurement artifact of record: path relative to this file, plus
+# the sha256 hex digest of the artifact's bytes. Recording the hash is
+# the human act of acceptance — a signature, not an edit.
+measurements:
+  file: "measurements/ftg_stage1_20240115.yaml"
+  sha256: "8d97e11ae96a6c94f0cda754c298d54c81f1877ea07e0e72d4d1c1d239890d23"
+
+# OCIO CONFIGURATION
+ocio:
+  base_config:
+    # ACES 2.0 / OCIO 2.5 studio config. For runtimes older than OCIO 2.5
+    # (until version tiers exist), use the ACES 1.3 values:
+    #   config_version: "v2.1.0", aces_version: "v1.3", ocio_version: "v2.3"
+    type: "studio"              # studio, aces, or custom
+    config_version: "v4.0.0"    # config version (e.g., v4.0.0, v2.1.0)
+    aces_version: "v2.0"        # ACES version (e.g., v2.0, v1.3)
+    ocio_version: "v2.5"        # OCIO version (e.g., v2.5, v2.3)
+  # White point policy: how content white (D65) maps to the wall's native white.
+  #   "adapted" (default): chromatic adaptation to wall white — full brightness
+  #   "absolute": no adaptation — exact chromaticity, costs peak brightness
+  #               and may single-channel clip when wall white differs from D65
+  white_point_policy: "adapted"
+  # VP RADIOMETRIC VIEW (default view; §spec:view-transform)
+  vp_radiometric:
+    nits_anchor: 300.0        # cd/m² emitted for scene-linear 1.0 — the only
+                              # placement knob; recorded in the config
+    overflow_policy: "clamp"  # above-peak handling: "clamp" (hard, radiometric
+                              # to the ceiling) or "shoulder" (narrow rolloff
+                              # confined to the top of the range)
+  output_config: "custom_display_config.ocio"  # Auto-generated if not specified

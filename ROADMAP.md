@@ -1,33 +1,9 @@
 # ocio-display-gen — Roadmap
 
 Sections run the walking skeleton to closed-loop measurement first:
-provenance underpins the artifact chain, the harness makes accuracy
-checkable, and sessions make it measurable. Runtime back-compat
-(version tiers) and model refinement (measured response) follow once
-the loop exists to judge them.
-
-## Artifact provenance §road:artifact-provenance
-
-### Split decisions from measurements §road:split-decisions-measurements
-
-Split `display_config.yaml` into a human-authored decisions file and a
-machine-written measurements artifact consumed together by
-`OCIODisplayGen.py`, with the promotion pointer as `{file, sha256}`.
-§spec:characterization-model.
-
-### Hash-bind generated artifacts §road:hash-binding
-
-Record input hashes and generator version in generated config
-metadata; refuse generation on promotion-hash mismatch; preserve
-byte-determinism. §spec:provenance. Depends on
-§road:split-decisions-measurements.
-
-**Verify:** Generate from split files and confirm the config
-description carries both input hashes and the generator version.
-Tamper one byte of the measurements artifact and confirm generation
-refuses, naming the mismatch. Regenerate from untouched inputs and
-confirm byte-identical output. Hand-edit a measured value and confirm
-the promotion hash catches it.
+the harness makes accuracy checkable, and sessions make it
+measurable. Runtime back-compat (version tiers) and model refinement
+(measured response) follow once the loop exists to judge them.
 
 ## Verification harness §road:verification-harness
 
@@ -91,8 +67,7 @@ Add the `characterize` session mode: fixed device-referred patch
 protocol driven raw (no OCIO), emitting the immutable measurements
 artifact with embedded processor snapshot, instrument identity, and
 ambient floor. §spec:measurement-loop,
-§spec:characterization-model. Depends on §road:session-orchestrator
-and §road:split-decisions-measurements.
+§spec:characterization-model. Depends on §road:session-orchestrator.
 
 **Verify:** With a mock instrument driver that returns the session's
 own predictions: run the session command end-to-end and confirm it
@@ -127,7 +102,7 @@ and that near-black output is finite-sloped.
 
 ### Target-runtime tier selection §road:tier-selection
 
-Add a target OCIO runtime option to the decisions file that selects
+Add a target OCIO runtime option to the show manifest that selects
 base config and caps the emitted profile version (2.5 and 2.4 tiers).
 §spec:version-targeting.
 

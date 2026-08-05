@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Tests for the display-referred wall colorspace builder."""
 
-from pathlib import Path
-
 import colour
 import numpy as np
 import PyOpenColorIO as OCIO
@@ -15,17 +13,17 @@ from conftest import (
     WALL_PRIMARIES,
     WALL_WHITEPOINT,
     d65_xyz,
+    load_sample_inputs,
     make_characterization,
 )
 from OCIODisplayGen import (
     D65_WHITE_XY,
     DISPLAY_REFERENCE,
     DisplayCharacterization,
-    create_characterization_from_config,
+    create_characterization,
     create_display_colorspace_from_characterization,
     create_display_xyz_to_native_matrix,
-    load_config_from_yaml,
-    validate_config_data,
+    validate_inputs,
 )
 
 # PQ code values (SMPTE ST 2084), absolute nits
@@ -187,22 +185,17 @@ def test_description_records_absolute_policy() -> None:
     )
 
 
-def sample_yaml_config() -> dict:
-    """Fresh parse of the sample yaml — each call returns a new object."""
-    return load_config_from_yaml(str(Path(__file__).parent / "display_config.yaml"))
-
-
 def test_yaml_white_point_policy_parsed() -> None:
-    config = sample_yaml_config()
-    config["ocio"]["white_point_policy"] = "absolute"
-    char = create_characterization_from_config(config)
+    manifest, measurements = load_sample_inputs()
+    manifest["ocio"]["white_point_policy"] = "absolute"
+    char = create_characterization(manifest, measurements)
     assert char.white_point_policy == "absolute"
 
 
 def test_yaml_white_point_policy_defaults_to_adapted() -> None:
-    config = sample_yaml_config()
-    config["ocio"].pop("white_point_policy", None)
-    char = create_characterization_from_config(config)
+    manifest, measurements = load_sample_inputs()
+    manifest["ocio"].pop("white_point_policy", None)
+    char = create_characterization(manifest, measurements)
     assert char.white_point_policy == "adapted"
 
 
@@ -249,17 +242,17 @@ def test_description_omits_intensity_when_absent() -> None:
 
 
 def test_yaml_processor_state_parsed() -> None:
-    char = create_characterization_from_config(sample_yaml_config())
+    char = create_characterization(*load_sample_inputs())
     assert char.processor_intensity == "100%"
     assert char.processor_processing_disabled is True
 
 
 def test_yaml_processor_state_absent_is_none() -> None:
-    config = sample_yaml_config()
-    processor_conf = config["display"]["led_processor"]["configuration"]
-    processor_conf.pop("intensity", None)
-    processor_conf.pop("processing_disabled", None)
-    char = create_characterization_from_config(config)
+    manifest, measurements = load_sample_inputs()
+    contract = manifest["signal_contract"]
+    contract.pop("intensity", None)
+    contract.pop("processing_disabled", None)
+    char = create_characterization(manifest, measurements)
     assert char.processor_intensity is None
     assert char.processor_processing_disabled is None
 
@@ -268,18 +261,18 @@ def test_yaml_processor_state_absent_is_none() -> None:
 # loud in strict mode, warn otherwise.
 
 
-def config_without_processor_state(strict_mode: bool) -> dict:
-    config = sample_yaml_config()
-    config["validation"]["strict_mode"] = strict_mode
-    processor_conf = config["display"]["led_processor"]["configuration"]
-    processor_conf.pop("intensity", None)
-    processor_conf.pop("processing_disabled", None)
-    return config
+def inputs_without_processor_state(strict_mode: bool) -> tuple[dict, dict]:
+    manifest, measurements = load_sample_inputs()
+    manifest["validation"]["strict_mode"] = strict_mode
+    contract = manifest["signal_contract"]
+    contract.pop("intensity", None)
+    contract.pop("processing_disabled", None)
+    return manifest, measurements
 
 
 def test_validation_missing_processor_state_strict_fails() -> None:
-    assert validate_config_data(config_without_processor_state(True)) is False
+    assert validate_inputs(*inputs_without_processor_state(True)) is False
 
 
 def test_validation_missing_processor_state_non_strict_warns() -> None:
-    assert validate_config_data(config_without_processor_state(False)) is True
+    assert validate_inputs(*inputs_without_processor_state(False)) is True

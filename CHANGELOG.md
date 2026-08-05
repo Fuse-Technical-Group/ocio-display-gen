@@ -5,8 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- `display_config.yaml` split into `decisions.yaml` (human decisions:
+  show naming, intended signal contract, OCIO targeting, validation
+  mode) and a machine-format measurements artifact
+  (`measurements/ftg_stage1_20240115.yaml`, shipped as a hand-built
+  sample), joined by a `measurements: {file, sha256}` promotion
+  pointer. Emitted transforms are unchanged by the split.
+
 ### Added
 
+- Hash binding (§spec:provenance): generation refuses when the
+  measurements artifact on disk does not hash to the promotion
+  pointer's recorded sha256 (or when the recorded digest is
+  malformed), naming the artifact and both hashes. The generated
+  config's top-level description records greppable `Provenance:` lines
+  — the show description, decisions sha256, measurements sha256, and
+  generator version — and the CLI prints them on success. Output stays
+  byte-deterministic. Pointer inputs are hardened: relative paths only
+  (no absolute paths or `..`), no control characters, and the recorded
+  digest must be a quoted string.
 - VP Radiometric view (default): configurable nits anchor
   (`ocio.vp_radiometric.nits_anchor`), ACES 2.0 gamut compression at the
   wall-gamut boundary, and a selectable above-peak overflow policy

@@ -54,7 +54,7 @@ as a single black box: known code values in, measured light out.
 Characterization input is split along the human/machine line into two
 files the generator consumes together:
 
-- A **decisions file** (human-authored, reviewed): show naming, nits
+- A **show manifest** (human-authored, reviewed): show naming, nits
   anchor, overflow policy, white point policy, target OCIO tier,
   validation mode, the *intended* processor lockdown state — and a
   promotion pointer to the measurement artifact of record as
@@ -177,7 +177,7 @@ for older runtimes. The generated config's profile version shall never
 exceed the target runtime's OCIO library version (Disguise documents
 this as a hard compatibility requirement).
 
-Target tiers, selected in `display_config.yaml`:
+Target tiers, selected in the show manifest:
 
 | Tier | Runtime | Basis | Rendering |
 |------|---------|-------|-----------|
@@ -227,7 +227,7 @@ exponent, and a nonstandard decode state defeats on-site auditability.
 
 When the wall's calibrated white differs from the content white (D65),
 the config applies one of two explicit policies, selected in
-`display_config.yaml` and recorded in the output:
+the show manifest and recorded in the output:
 
 - **adapted** (default): chromatic adaptation maps content white to the
   wall's native white. Preserves full brightness; standard practice.
@@ -260,12 +260,12 @@ chain bounds the real error.
 
 ## Artifact provenance §spec:provenance
 
-*Status: not started*
+*Status: complete*
 
 Every artifact in the pipeline records the sha256 content hashes of
 its inputs, binding the chain as it is built:
 
-- The decisions file's promotion pointer is `{file, sha256}` of the
+- The show manifest's promotion pointer is `{file, sha256}` of the
   measurement artifact of record (§spec:characterization-model).
 - The generated config's metadata records both input hashes and the
   generator version; generation refuses when the promotion hash does

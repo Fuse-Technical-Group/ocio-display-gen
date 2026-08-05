@@ -1,5 +1,7 @@
-"""Shared test fixtures: sample-wall values from display_config.yaml."""
+"""Shared test fixtures: sample-wall values from the shipped sample inputs
+(show_manifest.yaml + its promoted measurements artifact)."""
 
+from pathlib import Path
 from typing import Any
 
 import colour
@@ -12,13 +14,23 @@ from OCIODisplayGen import (
     D65_WHITE_XY,
     DisplayCharacterization,
     create_display_colorspace_from_characterization,
+    load_inputs,
     register_display,
 )
 
 STUDIO_CONFIG_URI = "ocio://studio-config-v2.1.0_aces-v1.3_ocio-v2.3"
 ACES2_STUDIO_CONFIG_URI = "ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5"
 
-# Sample wall measurements from display_config.yaml
+# The shipped sample inputs (show manifest + measurements artifact).
+SAMPLE_MANIFEST_PATH = Path(__file__).parent / "show_manifest.yaml"
+
+
+def load_sample_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
+    """Fresh parse of the shipped samples — each call returns new objects."""
+    manifest, measurements, _ = load_inputs(str(SAMPLE_MANIFEST_PATH))
+    return manifest, measurements
+
+# Sample wall measurements from the shipped measurements artifact
 WALL_PRIMARIES = np.array([[0.680, 0.320], [0.265, 0.690], [0.150, 0.060]])
 WALL_WHITEPOINT = (0.3127, 0.3290)
 PEAK_LUMINANCE = 1000.0
