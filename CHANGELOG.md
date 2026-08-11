@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Scene-linear EXR probe imagery beside the PNG records: one float32
+  EXR per patch in the config's scene reference space, byte
+  deterministic, self-describing via `sceneReference`/`configSha256`
+  header attributes; `--check-predictions` audits the EXR bindings.
+
 ### Changed
 
 - Governance demoted to component scope: system-level requirements,

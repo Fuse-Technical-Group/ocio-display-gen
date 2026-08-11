@@ -12,6 +12,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "colour-science>=0.4.6",
+    # Unused directly, but colour-science's import emits a
+    # ColourUsageWarning without it.
     "matplotlib>=3.10.3",
     "opencolorio>=2.5.1",
     "pyyaml>=6.0",
@@ -20,6 +22,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "mypy>=1.8.0",
+    # Test-only independent EXR reader: the hand-rolled probe writer's
+    # format claim is checked against it, not against itself.
+    "openexr>=3.3.0",
     "pylint>=3.0.0",
     "pytest>=8.0.0",
     "ruff>=0.1.0",
