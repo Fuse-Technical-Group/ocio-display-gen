@@ -77,12 +77,18 @@ Each run writes two more artifacts beside the config
   scene-linear content that produces it, the code values the config
   emits, and the CIE XYZ the wall is predicted to emit in cd/m². Bound
   to the config by sha256; never hand-edited.
-- `custom_display_config.probe/` — one solid-color 16-bit PNG per
-  patch, holding exactly those code values.
+- `custom_display_config.probe/` — two solid-color images per patch:
+  a 16-bit PNG holding exactly the predicted code values (a
+  provenance and instrument-side record, not a playback stimulus),
+  and a float32 EXR holding the scene-linear content in the config's
+  scene reference space — the stimulus for verifying the deployed
+  renderer. When displaying an EXR, tag it as the scene reference the
+  predictions file names; the input space is load-bearing.
 
-Display the probe images on the wall, measure each patch, and compare
-the measurements against the predictions. Judging the residuals
-(ΔE2000, unity exponent) belongs to OLE-Toolset, not to this tool.
+Drive the predicted code values on the wall (or display the EXRs
+through the config on the show renderer), measure each patch, and
+compare against the predictions. Judging the residuals (ΔE2000, unity
+exponent) belongs to OLE-Toolset, not to this tool.
 
 To identify a predictions file found on a show machine and confirm it
 still describes the config sitting next to it:

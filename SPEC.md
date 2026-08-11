@@ -231,30 +231,37 @@ id as stem in the probe directory beside the config:
   it. Predictions are computed from the quantized code value, so
   image and prediction agree exactly.
 - A float32 **EXR** in the config's scene reference space, holding
-  exactly the scene-linear triple the predictions file records for
-  the patch — two views of one computation. This is the renderer-path
-  stimulus: the SDI loop drives predicted code values directly,
-  proving the config math and the wall plus link, but never the
-  deployed renderer's application of the config. Displaying the EXR
-  through the config's default (display, view) closes that gap — the
-  renderer's output is judged against the same predictions. The
-  session half lives in the umbrella roadmap
-  (`§road:renderer-verification` there).
+  the nearest float32 to the scene-linear triple the predictions file
+  records for the patch — two views of one computation. This is the
+  renderer-path stimulus: the SDI loop drives predicted code values
+  directly, proving the config math and the wall plus link, but never
+  the deployed renderer's application of the config. Displaying the
+  EXR through the config's default (display, view) closes that gap —
+  the renderer's output is judged against the same predictions. The
+  input space is load-bearing: the file has to be interpreted as the
+  config's scene reference, and a renderer that assumes another space
+  produces plausible but wrong output. The session half lives in the
+  umbrella roadmap (`§road:renderer-verification` there).
 
 The PNG's no-image-library rationale does not transfer to the EXR:
 this artifact exists to be interpreted by the renderer, not to bypass
 interpretation. Byte-determinism (§spec:provenance) still rules out
-an image library, whose bytes sit at the mercy of its version. The
-EXR writer is therefore hand-rolled over the standard library —
-single-part uncompressed scanline, RGB float32, fixed header
-attribute order — deterministic by construction, with zero runtime
-dependencies. Float32 rather than half: half's three significant
-digits cannot carry the artifact's recorded precision. The format
-claim is not self-certified: tests read the emitted bytes back
-through the OpenEXR library, a dev-only dependency. Each EXR carries
-`sceneReference` and `configSha256` string attributes, so it is
-self-describing for the renderer operator and provenance-bound to
-its config like the predictions file.
+an image library, whose bytes sit at the mercy of its version, so the
+EXR writer is hand-rolled over the standard library — deterministic
+by construction, zero runtime dependencies, verified against the
+OpenEXR library (a dev-only dependency) rather than self-certified.
+Uncompressed scanlines cost ~800 KB per patch and are accepted for
+the widest reader compatibility and the simplest byte-exact framing;
+float32 rather than half because half's three significant digits
+cannot carry the artifact's recorded precision. Each EXR carries
+`sceneReference` and `configSha256` string attributes, so it names
+its own interpretation and config; `--check-predictions` audits the
+sibling probe directory's EXR bindings the same way it audits the
+config hash. The standard `chromaticities` attribute is deliberately
+absent: the scene reference is derived from each config's interchange
+role, and stamping fixed primaries would silently bind the artifact
+to one base-config family — the `sceneReference` name is the
+authoritative statement of interpretation.
 
 ## Artifact provenance §spec:provenance
 
