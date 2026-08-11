@@ -33,9 +33,12 @@ from OCIODisplayGen import (
     PROBE_PATCHES,
     DisplayCharacterization,
     PatchPrediction,
+    _apply_rgb,
     _format_float,
+    _quantize_code_value,
     _recorded_triple,
     build_predictions,
+    check_predictions,
     create_base_ocio_config,
     create_characterization,
     create_display_colorspace_from_characterization,
@@ -43,6 +46,7 @@ from OCIODisplayGen import (
     emit_predictions,
     main,
     parse_predictions,
+    probe_directory,
     probe_patch_exr,
     probe_patch_png,
     register_display,
@@ -375,16 +379,23 @@ def test_handoff_artifacts_are_byte_deterministic(tmp_path: Path) -> None:
         display, char = generate_sample_config(path)
         config = OCIO.Config.CreateFromFile(str(path))
         predictions = build_predictions(config, display, char, NITS_ANCHOR, str(path))
+        # Digests, not blobs: identical hashes prove identical bytes
+        # without holding two full probe sets (~46 MB) in memory.
         runs.append(
             (
-                emit_predictions(predictions),
-                [probe_patch_png(patch) for patch in predictions.patches],
+                hashlib.sha256(emit_predictions(predictions).encode()).hexdigest(),
                 [
-                    probe_patch_exr(
-                        patch,
-                        predictions.scene_reference,
-                        predictions.config_sha256,
-                    )
+                    hashlib.sha256(probe_patch_png(patch)).hexdigest()
+                    for patch in predictions.patches
+                ],
+                [
+                    hashlib.sha256(
+                        probe_patch_exr(
+                            patch,
+                            predictions.scene_reference,
+                            predictions.config_sha256,
+                        )
+                    ).hexdigest()
                     for patch in predictions.patches
                 ],
             )
@@ -535,23 +546,24 @@ def test_probe_image_encodes_the_patch_code_value(
     _, predictions = generated
     for patch in predictions.patches:
         pixel = png_pixel(probe_patch_png(patch))
-        assert pixel == tuple(round(c * 65535) for c in patch.code_value), patch.id
+        assert pixel == tuple(round(c * PROBE_CODE_LEVELS) for c in patch.code_value), (
+            patch.id
+        )
 
 
 def test_write_probe_imagery_names_two_files_per_patch(
-    generated: Tuple[Path, Any], tmp_path: Path
+    generated: Tuple[Path, Any], probe_dir: Path
 ) -> None:
     """Each patch gets a PNG (code-value record) and an EXR
-    (scene-linear renderer stimulus) sharing the patch id as stem."""
+    (scene-linear renderer stimulus) sharing the patch id as stem, in
+    patch order — the documented contract of the returned path list."""
     _, predictions = generated
-    directory = tmp_path / "wall.probe"
-    written = write_probe_imagery(str(directory), predictions)
-    assert len(written) == 2 * len(predictions.patches)
-    assert sorted(p.name for p in directory.iterdir()) == sorted(
+    written = [path.name for path in probe_dir_written(probe_dir)]
+    assert written == [
         f"{patch.id}{suffix}"
         for patch in predictions.patches
         for suffix in (".png", ".exr")
-    )
+    ]
 
 
 # ---------------------------------------------------------------------
@@ -563,11 +575,23 @@ def test_write_probe_imagery_names_two_files_per_patch(
 def probe_dir(
     generated: Tuple[Path, Any], tmp_path_factory: pytest.TempPathFactory
 ) -> Path:
-    """The probe imagery written once for the EXR read-back tests."""
-    _, predictions = generated
-    directory = tmp_path_factory.mktemp("probe") / "wall.probe"
-    write_probe_imagery(str(directory), predictions)
+    """The probe imagery written once, into the directory name
+    production derives (probe_directory), for every probe test."""
+    config_path, predictions = generated
+    directory = Path(
+        probe_directory(str(tmp_path_factory.mktemp("probe") / config_path.name))
+    )
+    written = write_probe_imagery(str(directory), predictions)
+    (directory / ".written-order").write_text(
+        "\n".join(Path(item).name for item in written)
+    )
     return directory
+
+
+def probe_dir_written(directory: Path) -> List[Path]:
+    """The paths write_probe_imagery returned, in its documented order."""
+    names = (directory / ".written-order").read_text().splitlines()
+    return [directory / name for name in names]
 
 
 def read_exr(path: Path) -> Tuple[Dict[str, Any], npt.NDArray[np.float32]]:
@@ -625,14 +649,11 @@ def test_probe_exr_through_default_view_reproduces_code_values(
     ).getDefaultCPUProcessor()
     for patch in predictions.patches:
         _, pixels = read_exr(probe_dir / f"{patch.id}.exr")
-        pixel = np.ascontiguousarray(pixels[0, 0])
-        processor.applyRGB(pixel)
-        quantized = (
-            np.round(np.clip(pixel.astype(np.float64), 0.0, 1.0) * PROBE_CODE_LEVELS)
-            / PROBE_CODE_LEVELS
-        )
-        # The artifact records code values at nine decimals
-        # (§spec:verification), so the comparison lands there too.
+        emitted = _apply_rgb(processor, pixels[0, 0])
+        # One quantization rule, owned by the module (§spec:verification):
+        # the artifact records code values at nine decimals, so the
+        # comparison lands there too.
+        quantized = _quantize_code_value(emitted)
         assert _recorded_triple(quantized) == patch.code_value, patch.id
 
 
@@ -664,6 +685,40 @@ def cli_output(tmp_path_factory: pytest.TempPathFactory) -> Path:
         patch.setattr("sys.argv", ["OCIODisplayGen.py"])
         main()
     return directory
+
+
+def test_check_predictions_audits_probe_exr_bindings(cli_output: Path) -> None:
+    """check_predictions sweeps the sibling probe directory: intact EXRs
+    pass the audit; an EXR naming a different config is refused — the
+    stale-artifact failure the audit exists to catch (§spec:provenance)."""
+    import shutil
+
+    directory = cli_output / "audit"
+    directory.mkdir()
+    for name in (
+        "custom_display_config.ocio",
+        "custom_display_config.predictions.yaml",
+    ):
+        shutil.copy(cli_output / name, directory / name)
+    shutil.copytree(
+        cli_output / "custom_display_config.probe",
+        directory / "custom_display_config.probe",
+    )
+    predictions_path = directory / "custom_display_config.predictions.yaml"
+    check_predictions(str(predictions_path))  # intact: passes
+
+    predictions = parse_predictions(
+        predictions_path.read_bytes(), str(predictions_path)
+    )
+    stale = probe_patch_exr(
+        predictions.patches[0], predictions.scene_reference, "0" * 64
+    )
+    exr_path = (
+        directory / "custom_display_config.probe" / f"{predictions.patches[0].id}.exr"
+    )
+    exr_path.write_bytes(stale)
+    with pytest.raises(ValueError, match="different generation"):
+        check_predictions(str(predictions_path))
 
 
 def test_cli_emits_predictions_and_probe_imagery(cli_output: Path) -> None:
