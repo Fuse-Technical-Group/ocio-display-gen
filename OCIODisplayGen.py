@@ -2129,12 +2129,23 @@ def _check_probe_exr_bindings(path: str, predictions: Predictions) -> None:
     if not os.path.isdir(probe_dir):
         print("   (no probe directory beside the config; skipping EXR audit)")
         return
-    exr_names = sorted(n for n in os.listdir(probe_dir) if n.endswith(".exr"))
+    exr_names = sorted(n for n in os.listdir(probe_dir) if n.lower().endswith(".exr"))
+    if not exr_names:
+        print("   (probe directory holds no EXRs; nothing to audit)")
+        return
     for exr_name in exr_names:
         exr_path = os.path.join(probe_dir, exr_name)
         recorded = _read_exr_string_attribute(
             read_file_bytes(exr_path, "Probe EXR"), b"configSha256"
         )
+        # The attribute is untrusted file content that this audit prints:
+        # hold it to the digest grammar before it reaches the operator's
+        # trust signal, like every other supplied-artifact string.
+        if not SHA256_HEX_PATTERN.fullmatch(recorded):
+            raise ValueError(
+                f"Probe EXR '{exr_name}' carries a malformed configSha256 "
+                f"attribute — not a sha256 hex digest"
+            )
         if not hmac.compare_digest(recorded, predictions.config_sha256):
             raise ValueError(
                 f"Probe EXR '{exr_name}' names config sha256 {recorded}, but "
