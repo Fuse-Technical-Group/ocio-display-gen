@@ -218,12 +218,43 @@ describes and refuses when the config it names is no longer the config
 on disk — measuring against predictions for a different config compares
 the wall to something it is not running.
 
-Probe imagery is one solid-color 16-bit PNG per patch, written against
-the format from the standard library. **Why not an image library:** the
-stored pixel shall be exactly the code value the prediction was computed
-from, with no colorspace tag, gamma chunk, or encoder default able to
-reinterpret it. Predictions are computed from the quantized code value,
-so image and prediction agree exactly.
+Probe imagery is two solid-color images per patch, sharing the patch
+id as stem in the probe directory beside the config:
+
+- A 16-bit **PNG** holding the predicted code values — a record for
+  provenance and instrument-side reference, not a playback stimulus:
+  its pixels are drive code values, and no renderer plays drive
+  values back untouched. Written against the format from the standard
+  library. **Why not an image library:** the stored pixel shall be
+  exactly the code value the prediction was computed from, with no
+  colorspace tag, gamma chunk, or encoder default able to reinterpret
+  it. Predictions are computed from the quantized code value, so
+  image and prediction agree exactly.
+- A float32 **EXR** in the config's scene reference space, holding
+  exactly the scene-linear triple the predictions file records for
+  the patch — two views of one computation. This is the renderer-path
+  stimulus: the SDI loop drives predicted code values directly,
+  proving the config math and the wall plus link, but never the
+  deployed renderer's application of the config. Displaying the EXR
+  through the config's default (display, view) closes that gap — the
+  renderer's output is judged against the same predictions. The
+  session half lives in the umbrella roadmap
+  (`§road:renderer-verification` there).
+
+The PNG's no-image-library rationale does not transfer to the EXR:
+this artifact exists to be interpreted by the renderer, not to bypass
+interpretation. Byte-determinism (§spec:provenance) still rules out
+an image library, whose bytes sit at the mercy of its version. The
+EXR writer is therefore hand-rolled over the standard library —
+single-part uncompressed scanline, RGB float32, fixed header
+attribute order — deterministic by construction, with zero runtime
+dependencies. Float32 rather than half: half's three significant
+digits cannot carry the artifact's recorded precision. The format
+claim is not self-certified: tests read the emitted bytes back
+through the OpenEXR library, a dev-only dependency. Each EXR carries
+`sceneReference` and `configSha256` string attributes, so it is
+self-describing for the renderer operator and provenance-bound to
+its config like the predictions file.
 
 ## Artifact provenance §spec:provenance
 
