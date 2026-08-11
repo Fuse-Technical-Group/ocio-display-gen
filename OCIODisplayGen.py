@@ -1491,6 +1491,17 @@ def _triple(values: Any) -> Tuple[float, float, float]:
     return (first, second, third)
 
 
+def _quantize_code_value(
+    emitted: "npt.NDArray[np.float64]",
+) -> "npt.NDArray[np.float64]":
+    """Clamp emitted code values to [0, 1] and land them on the probe
+    imagery's grid — the one statement of the quantization rule, shared
+    by prediction and its tests. Code values are a signal, not a float:
+    the prediction describes the file the wall is actually driven with
+    (§spec:verification)."""
+    return np.round(np.clip(emitted, 0.0, 1.0) * PROBE_CODE_LEVELS) / PROBE_CODE_LEVELS
+
+
 def _recorded_triple(values: Any) -> Tuple[float, float, float]:
     """Three floats at the artifact's recorded precision."""
     return _triple(round(float(value), PREDICTIONS_DECIMALS) for value in values)
@@ -1611,12 +1622,7 @@ def predict_probe_patches(
         content = to_display_reference @ np.asarray(patch.drive, dtype=np.float64)
         scene_linear = _apply_rgb(to_scene_reference, content) * anchor_scale
         emitted = _apply_rgb(encode, scene_linear)
-        # Code values are a signal, not a float: clamp to the legal
-        # range and land them on the probe imagery's grid, so the
-        # prediction describes the file the wall is actually driven with.
-        code_value = (
-            np.round(np.clip(emitted, 0.0, 1.0) * PROBE_CODE_LEVELS) / PROBE_CODE_LEVELS
-        )
+        code_value = _quantize_code_value(emitted)
         xyz = _apply_rgb(decode, code_value) * REFERENCE_LUMINANCE
         predictions.append(
             PatchPrediction(
@@ -1921,8 +1927,13 @@ def probe_patch_png(prediction: PatchPrediction) -> bytes:
 EXR_MAGIC = b"\x76\x2f\x31\x01"
 EXR_VERSION = struct.pack("<I", 2)
 EXR_PIXEL_TYPE_FLOAT = 2
-# chlist entries are sorted by name, per the format.
+# chlist entries are sorted by name, per the format. The pixel rows are
+# built from this same tuple, so it is the one source of channel order.
 EXR_CHANNELS = ("B", "G", "R")
+# Scanline chunk header (y coordinate + byte count) and offset-table
+# entry widths, per the format.
+EXR_SCANLINE_HEADER_BYTES = 8
+EXR_OFFSET_ENTRY_BYTES = 8
 
 
 def _exr_attribute(name: bytes, kind: bytes, payload: bytes) -> bytes:
@@ -1936,18 +1947,15 @@ def probe_patch_exr(
     """
     A solid-color float32 EXR for one probe patch, in the config's
     scene reference space — the stimulus a renderer interprets through
-    the generated config (§spec:verification). Its pixels are exactly
-    the scene-linear triple the predictions file records.
+    the generated config (§spec:verification). Its pixels are the
+    nearest float32 to the scene-linear triple the predictions file
+    records.
 
-    Hand-rolled over the standard library like the PNGs, but for a
-    different reason: the PNG bypasses interpretation, while this
-    artifact exists to be interpreted — byte-determinism
-    (§spec:provenance) is what rules out an image library here. The
-    header's attribute order is fixed (alphabetical); sceneReference
-    and configSha256 string attributes make each file self-describing
-    for the renderer operator. test_predictions.py reads the emitted
-    bytes back through the OpenEXR library, so the format claim is not
-    self-certified.
+    Hand-rolled for byte-determinism (rationale in §spec:verification).
+    This file's decisions: fixed alphabetical header attribute order;
+    channel-planar solid rows in ``EXR_CHANNELS`` order; sceneReference
+    and configSha256 string attributes so each file names its own
+    interpretation and config.
 
     Raises:
         ValueError: For non-finite scene-linear values, or unprintable
@@ -1967,9 +1975,8 @@ def probe_patch_exr(
         b"".join(
             channel.encode("ascii")
             + b"\x00"
-            + struct.pack("<i", EXR_PIXEL_TYPE_FLOAT)
-            + struct.pack("<4B", 0, 0, 0, 0)  # pLinear + 3 reserved bytes
-            + struct.pack("<2i", 1, 1)  # x/y sampling
+            # pixel type, pLinear + 3 reserved bytes, x/y sampling
+            + struct.pack("<i4B2i", EXR_PIXEL_TYPE_FLOAT, 0, 0, 0, 0, 1, 1)
             for channel in EXR_CHANNELS
         )
         + b"\x00"
@@ -1987,17 +1994,24 @@ def probe_patch_exr(
         + _exr_attribute(b"screenWindowWidth", b"float", struct.pack("<f", 1.0))
         + b"\x00"
     )
-    # Channel-planar row in chlist order (B, G, R); every scanline is
-    # the same solid color.
-    red, green, blue = prediction.scene_linear
-    row = b"".join(struct.pack("<f", value) * size for value in (blue, green, red))
-    chunk_length = 8 + len(row)
-    data_start = len(EXR_MAGIC) + len(EXR_VERSION) + len(header) + 8 * size
+    # Channel-planar rows; EXR_CHANNELS is the one source of order.
+    by_name = dict(zip(("R", "G", "B"), prediction.scene_linear))
+    row = b"".join(
+        struct.pack("<f", by_name[channel]) * size for channel in EXR_CHANNELS
+    )
+    row_len = len(row)
+    chunk_length = EXR_SCANLINE_HEADER_BYTES + row_len
+    data_start = (
+        len(EXR_MAGIC) + len(EXR_VERSION) + len(header) + EXR_OFFSET_ENTRY_BYTES * size
+    )
     offsets = struct.pack(
         f"<{size}Q", *(data_start + y * chunk_length for y in range(size))
     )
-    scanlines = b"".join(struct.pack("<2i", y, len(row)) + row for y in range(size))
-    return EXR_MAGIC + EXR_VERSION + header + offsets + scanlines
+    parts = [EXR_MAGIC, EXR_VERSION, header, offsets]
+    for y in range(size):
+        parts.append(struct.pack("<2i", y, row_len))
+        parts.append(row)
+    return b"".join(parts)
 
 
 def write_probe_imagery(directory: str, predictions: Predictions) -> List[str]:
@@ -2071,6 +2085,65 @@ def check_predictions(path: str) -> None:
             f"config it is not running (§spec:verification)"
         )
     print(f"   ✓ '{predictions.config_file}' matches the recorded hash")
+    _check_probe_exr_bindings(path, predictions)
+
+
+def _read_exr_string_attribute(data: bytes, name: bytes) -> str:
+    """The value of a string attribute in an EXR header, parsed with the
+    standard library — enough of the format to audit the writer's own
+    fixed framing (§spec:verification).
+
+    Raises:
+        ValueError: When the attribute is absent or the header is not
+            the writer's single-part framing.
+    """
+    if not data.startswith(EXR_MAGIC):
+        raise ValueError("not an EXR file (bad magic)")
+    cursor = len(EXR_MAGIC) + len(EXR_VERSION)
+    while data[cursor] != 0:
+        name_end = data.index(b"\x00", cursor)
+        attribute_name = data[cursor:name_end]
+        type_end = data.index(b"\x00", name_end + 1)
+        (size,) = struct.unpack_from("<i", data, type_end + 1)
+        payload_start = type_end + 1 + 4
+        if attribute_name == name:
+            return data[payload_start : payload_start + size].decode("utf-8")
+        cursor = payload_start + size
+    raise ValueError(f"EXR header has no '{name.decode()}' attribute")
+
+
+def _check_probe_exr_bindings(path: str, predictions: Predictions) -> None:
+    """Audit the sibling probe directory's EXR headers against the
+    predictions' config hash, so a stale EXR — the artifact that travels
+    to another machine and operator — is caught the same way a stale
+    config is (§spec:provenance). A missing probe directory is reported,
+    not an error: predictions stand alone.
+
+    Raises:
+        ValueError: When an EXR names a different config.
+    """
+    probe_dir = _sibling_artifact(
+        os.path.join(os.path.dirname(os.path.abspath(path)), predictions.config_file),
+        PROBE_DIR_SUFFIX,
+    )
+    if not os.path.isdir(probe_dir):
+        print("   (no probe directory beside the config; skipping EXR audit)")
+        return
+    exr_names = sorted(n for n in os.listdir(probe_dir) if n.endswith(".exr"))
+    for exr_name in exr_names:
+        exr_path = os.path.join(probe_dir, exr_name)
+        recorded = _read_exr_string_attribute(
+            read_file_bytes(exr_path, "Probe EXR"), b"configSha256"
+        )
+        if not hmac.compare_digest(recorded, predictions.config_sha256):
+            raise ValueError(
+                f"Probe EXR '{exr_name}' names config sha256 {recorded}, but "
+                f"these predictions record {predictions.config_sha256}: the "
+                f"imagery is from a different generation — displaying it "
+                f"would measure the wall against a config it is not running "
+                f"(§spec:verification)"
+            )
+    print(f"   ✓ {len(exr_names)} probe EXRs name the recorded config hash")
 
 
 def generate_output_filename(
@@ -2247,8 +2320,7 @@ def main():
         print(f"   Predictions: {predictions_file}")
         print(
             f"   Probe imagery: {probe_dir}/ "
-            f"({len(predictions.patches)} patches x PNG+EXR, "
-            f"{len(probe_files)} files, {predictions.view})"
+            f"({len(probe_files)} files: PNG+EXR per patch, {predictions.view})"
         )
         print("\nProvenance recorded in the config description:")
         for line in provenance_description(provenance).splitlines():
@@ -2281,9 +2353,12 @@ def main():
             f"measure each patch, and compare against '{predictions_file}'"
         )
         print(
-            f"4. To verify the renderer: play '{probe_dir}/*.exr' through "
-            f"display '{display_name}', view '{predictions.view}', and "
-            f"compare its output against the same predictions"
+            f"4. To verify the renderer: load '{probe_dir}/*.exr' tagged as "
+            f"'{predictions.scene_reference}' — the input space is "
+            f"load-bearing; a renderer that assumes another space produces "
+            f"plausible but wrong output — through display "
+            f"'{display_name}', view '{predictions.view}', and compare "
+            f"against the same predictions"
         )
     except Exception as e:
         print(f"❌ Error creating OCIO config: {e}")
