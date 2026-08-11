@@ -1,3 +1,10 @@
+## [0.2.1](https://github.com/Fuse-Technical-Group/ocio-display-gen/compare/v0.2.0...v0.2.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* **rendering:** quantize the fixed-function peak; keep the measured value ([#22](https://github.com/Fuse-Technical-Group/ocio-display-gen/issues/22)) ([adb80f9](https://github.com/Fuse-Technical-Group/ocio-display-gen/commit/adb80f9c17f188d2861700d703b771308f70ce0a))
+
 # [0.2.0](https://github.com/Fuse-Technical-Group/ocio-display-gen/compare/v0.1.0...v0.2.0) (2026-08-11)
 
 
