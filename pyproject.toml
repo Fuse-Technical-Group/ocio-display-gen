@@ -20,6 +20,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "mypy>=1.8.0",
+    # Test-only independent EXR reader: the hand-rolled probe writer's
+    # format claim is checked against it, not against itself.
+    "openexr>=3.3.0",
     "pylint>=3.0.0",
     "pytest>=8.0.0",
     "ruff>=0.1.0",

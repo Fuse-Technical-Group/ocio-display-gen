@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Tuple
 import colour
 import numpy as np
 import numpy.typing as npt
+import OpenEXR
 import PyOpenColorIO as OCIO
 import pytest
 import yaml  # type: ignore[import]
@@ -27,11 +28,13 @@ from OCIODisplayGen import (
     D65_WHITE_XY,
     GENERATOR_VERSION,
     PREDICTIONS_SCHEMA,
+    PROBE_CODE_LEVELS,
     PROBE_PATCH_PIXELS,
     PROBE_PATCHES,
     DisplayCharacterization,
     PatchPrediction,
     _format_float,
+    _recorded_triple,
     build_predictions,
     create_base_ocio_config,
     create_characterization,
@@ -40,6 +43,7 @@ from OCIODisplayGen import (
     emit_predictions,
     main,
     parse_predictions,
+    probe_patch_exr,
     probe_patch_png,
     register_display,
     write_probe_imagery,
@@ -375,6 +379,14 @@ def test_handoff_artifacts_are_byte_deterministic(tmp_path: Path) -> None:
             (
                 emit_predictions(predictions),
                 [probe_patch_png(patch) for patch in predictions.patches],
+                [
+                    probe_patch_exr(
+                        patch,
+                        predictions.scene_reference,
+                        predictions.config_sha256,
+                    )
+                    for patch in predictions.patches
+                ],
             )
         )
     assert runs[0] == runs[1]
@@ -526,16 +538,102 @@ def test_probe_image_encodes_the_patch_code_value(
         assert pixel == tuple(round(c * 65535) for c in patch.code_value), patch.id
 
 
-def test_write_probe_imagery_names_one_file_per_patch(
+def test_write_probe_imagery_names_two_files_per_patch(
     generated: Tuple[Path, Any], tmp_path: Path
 ) -> None:
+    """Each patch gets a PNG (code-value record) and an EXR
+    (scene-linear renderer stimulus) sharing the patch id as stem."""
     _, predictions = generated
     directory = tmp_path / "wall.probe"
     written = write_probe_imagery(str(directory), predictions)
-    assert len(written) == len(predictions.patches)
+    assert len(written) == 2 * len(predictions.patches)
     assert sorted(p.name for p in directory.iterdir()) == sorted(
-        f"{patch.id}.png" for patch in predictions.patches
+        f"{patch.id}{suffix}"
+        for patch in predictions.patches
+        for suffix in (".png", ".exr")
     )
+
+
+# ---------------------------------------------------------------------
+# Scene-linear EXR probes (§spec:verification)
+# ---------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def probe_dir(
+    generated: Tuple[Path, Any], tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    """The probe imagery written once for the EXR read-back tests."""
+    _, predictions = generated
+    directory = tmp_path_factory.mktemp("probe") / "wall.probe"
+    write_probe_imagery(str(directory), predictions)
+    return directory
+
+
+def read_exr(path: Path) -> Tuple[Dict[str, Any], npt.NDArray[np.float32]]:
+    """Header and pixels of an EXR through the OpenEXR library — the
+    independent reader, so the hand-rolled writer is checked against
+    the format rather than against itself."""
+    exr = OpenEXR.File(str(path))
+    channels = exr.channels()
+    assert set(channels) == {"RGB"}
+    return exr.header(), channels["RGB"].pixels
+
+
+def test_probe_exr_reads_back_the_recorded_scene_linear(
+    generated: Tuple[Path, Any], probe_dir: Path
+) -> None:
+    """The EXR holds exactly the scene-linear triple the predictions
+    file records — two views of one computation, like the PNGs."""
+    _, predictions = generated
+    for patch in predictions.patches:
+        _, pixels = read_exr(probe_dir / f"{patch.id}.exr")
+        assert pixels.dtype == np.float32
+        assert pixels.shape == (PROBE_PATCH_PIXELS, PROBE_PATCH_PIXELS, 3)
+        expected = np.asarray(patch.scene_linear, dtype=np.float32)
+        assert (pixels == expected).all(), patch.id
+
+
+def test_probe_exr_header_is_self_describing(
+    generated: Tuple[Path, Any], probe_dir: Path
+) -> None:
+    """sceneReference and configSha256 attributes bind each EXR to the
+    space it is stated in and the config it verifies, so a renderer
+    operator needs nothing beyond the file (§spec:provenance)."""
+    _, predictions = generated
+    header, _ = read_exr(probe_dir / "neutral_100.exr")
+    assert header["sceneReference"] == predictions.scene_reference
+    assert header["configSha256"] == predictions.config_sha256
+    assert header["compression"] == OpenEXR.NO_COMPRESSION
+
+
+def test_probe_exr_through_default_view_reproduces_code_values(
+    generated: Tuple[Path, Any], probe_dir: Path
+) -> None:
+    """The renderer-path criterion (§spec:verification): displaying an
+    EXR through the generated config's default (display, view)
+    reproduces the patch's predicted code values on the probe
+    imagery's quantization grid."""
+    config_path, predictions = generated
+    config = OCIO.Config.CreateFromFile(str(config_path))
+    assert config.getDefaultView(predictions.display) == predictions.view
+    processor = config.getProcessor(
+        predictions.scene_reference,
+        predictions.display,
+        predictions.view,
+        OCIO.TRANSFORM_DIR_FORWARD,
+    ).getDefaultCPUProcessor()
+    for patch in predictions.patches:
+        _, pixels = read_exr(probe_dir / f"{patch.id}.exr")
+        pixel = np.ascontiguousarray(pixels[0, 0])
+        processor.applyRGB(pixel)
+        quantized = (
+            np.round(np.clip(pixel.astype(np.float64), 0.0, 1.0) * PROBE_CODE_LEVELS)
+            / PROBE_CODE_LEVELS
+        )
+        # The artifact records code values at nine decimals
+        # (§spec:verification), so the comparison lands there too.
+        assert _recorded_triple(quantized) == patch.code_value, patch.id
 
 
 # ---------------------------------------------------------------------
@@ -579,6 +677,7 @@ def test_cli_emits_predictions_and_probe_imagery(cli_output: Path) -> None:
     assert predictions.config_file == config.name
     assert predictions.config_sha256 == hashlib.sha256(config.read_bytes()).hexdigest()
     assert len(list(probe_dir.glob("*.png"))) == len(PROBE_PATCHES)
+    assert len(list(probe_dir.glob("*.exr"))) == len(PROBE_PATCHES)
 
 
 def test_cli_checks_a_predictions_file_against_its_config(
