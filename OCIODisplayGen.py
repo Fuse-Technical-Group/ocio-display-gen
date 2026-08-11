@@ -179,8 +179,13 @@ def _measured_wall_gamut(
     white_point = characterization.white_point
     if white_point is None:
         raise ValueError("Characterization has no measured white point")
+    # ACES 2.0 fixed functions accept only integral peak_luminance; a
+    # measured peak is never integral. Quantize here — the one source of
+    # fixed-function parameterization — so the tone scale rounds to the
+    # nearest nit (far below instrument repeatability) while the
+    # radiometric anchor elsewhere keeps the measured value exactly.
     return (
-        characterization.peak_luminance,
+        float(round(characterization.peak_luminance)),
         characterization.primaries["red"],
         characterization.primaries["green"],
         characterization.primaries["blue"],

@@ -276,3 +276,33 @@ def test_validation_missing_processor_state_strict_fails() -> None:
 
 def test_validation_missing_processor_state_non_strict_warns() -> None:
     assert validate_inputs(*inputs_without_processor_state(False)) is True
+
+
+def test_fractional_measured_peak_parameterizes_the_fixed_functions(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    """A measured peak is never integral; the ACES 2.0 fixed functions
+    accept only integral peak_luminance, so parameterization rounds to
+    the nearest nit while the radiometric anchor keeps the measured
+    value exactly (regression: color-wrangler walking-skeleton round
+    trip failed on peak 601.886)."""
+    from OCIODisplayGen import _measured_wall_gamut
+
+    char = make_characterization()
+    char.peak_luminance = 601.886
+    peak, _red, _green, _blue, _white = _measured_wall_gamut(char)
+    assert peak == 602.0
+    assert char.peak_luminance == 601.886
+    # The full registration path parameterizes the fixed functions with
+    # the quantized peak — this raised before the fix.
+    import PyOpenColorIO as OCIO
+
+    from conftest import ACES2_STUDIO_CONFIG_URI
+    from OCIODisplayGen import register_display
+
+    config = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
+    cs = create_display_colorspace_from_characterization(char)
+    display_name = register_display(config, cs, char)
+    path = tmp_path_factory.mktemp("ocio") / "fractional_peak.ocio"
+    path.write_text(config.serialize(), encoding="utf-8")
+    assert list(OCIO.Config.CreateFromFile(str(path)).getViews(display_name))
