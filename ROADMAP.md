@@ -5,7 +5,7 @@ Component roadmap for the generate layer of
 Session and validation work live in the umbrella roadmap. The
 verification handoff has shipped (§spec:verification); what remains is
 model refinement, then runtime back-compat, then documentation
-pruning, then the renderer-path probe artifact.
+pruning.
 
 ## Measured response §road:measured-response
 
@@ -59,40 +59,3 @@ eotf-variants bug are already removed. §spec:config-structure.
 **Verify:** `grep` finds no references to gamut-mapping strategies that
 do not exist in generated output; tests and lint pass; README quick
 start reproduces a working config verbatim.
-
-## Scene-linear probe imagery §road:scene-linear-probes
-
-The verification loop drives predicted code values over SDI —
-bmd-signal-gen reads them from the predictions file — proving the
-config math and the wall + link, but never the deployed renderer's
-application of the config. The PNG probe imagery cannot fill that
-gap: its pixels are drive code values, a byte-exact record bound to
-the predictions, and no renderer plays drive values back untouched.
-Scene-linear probe imagery is this component's half of closing the
-gap: an artifact the renderer interprets through the config, judged
-against the same predictions. The session half lands in the umbrella
-roadmap (`§road:renderer-verification` there).
-
-### Spec the scene-linear probe artifact §road:spec-scene-linear-probes
-
-Amend §spec:verification with the scene-linear probe artifact: one
-floating-point EXR per patch in the config's scene reference space,
-holding exactly the scene-linear content the predictions file records,
-provenance-bound like the PNGs — why the PNG's no-image-library
-rationale does not transfer (this artifact exists to be interpreted by
-the renderer, not to bypass interpretation), and stating the PNGs'
-role precisely: a record of predicted code values for provenance and
-instrument-side reference, not a playback stimulus.
-
-### EXR probe writer §road:exr-probe-writer
-
-Write the per-patch scene-linear EXRs beside the PNG probes at
-generation time and record them in the predictions artifact and hash
-chain (`OCIODisplayGen.py`). §spec:verification. Depends on
-§road:spec-scene-linear-probes.
-
-**Verify:** Generate a config; the probe directory holds one EXR per
-patch; each EXR reads back the scene-linear values the predictions
-file records for its patch; displaying an EXR through the generated
-config's default (display, view) in an OCIO application reproduces
-that patch's predicted code values.
