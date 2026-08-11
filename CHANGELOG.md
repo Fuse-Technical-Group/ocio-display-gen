@@ -1,3 +1,16 @@
+# [0.2.0](https://github.com/Fuse-Technical-Group/ocio-display-gen/compare/v0.1.0...v0.2.0) (2026-08-11)
+
+
+### Bug Fixes
+
+* **probes:** hold the audited EXR digest to the artifact string invariant ([2723db5](https://github.com/Fuse-Technical-Group/ocio-display-gen/commit/2723db5a4c76d7bf9ef4deb15a80490fb2db5548))
+
+
+### Features
+
+* **probes:** audit probe EXR config bindings in check-predictions ([d999a03](https://github.com/Fuse-Technical-Group/ocio-display-gen/commit/d999a03e61b697d70221c213235ed60ed5fdcc40))
+* **probes:** emit scene-linear EXR probes beside the PNG records ([bde0412](https://github.com/Fuse-Technical-Group/ocio-display-gen/commit/bde0412283e8bfdac3031f934dee4c093d5650ef))
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
