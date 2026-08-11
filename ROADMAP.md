@@ -62,22 +62,27 @@ start reproduces a working config verbatim.
 
 ## Scene-linear probe imagery §road:scene-linear-probes
 
-The drive-value PNGs verify the wall through a transparent player
-(bmd-signal-gen over SDI); nothing yet exercises the deployed
-renderer's application of the config. Scene-linear probe imagery is
-this component's half of that loop: an artifact the renderer
-interprets through the config, judged against the same predictions.
-The session half lands in the umbrella roadmap
-(`§road:renderer-verification` there).
+The verification loop drives predicted code values over SDI —
+bmd-signal-gen reads them from the predictions file — proving the
+config math and the wall + link, but never the deployed renderer's
+application of the config. The PNG probe imagery cannot fill that
+gap: its pixels are drive code values, a byte-exact record bound to
+the predictions, and no renderer plays drive values back untouched.
+Scene-linear probe imagery is this component's half of closing the
+gap: an artifact the renderer interprets through the config, judged
+against the same predictions. The session half lands in the umbrella
+roadmap (`§road:renderer-verification` there).
 
 ### Spec the scene-linear probe artifact §road:spec-scene-linear-probes
 
 Amend §spec:verification with the scene-linear probe artifact: one
 floating-point EXR per patch in the config's scene reference space,
 holding exactly the scene-linear content the predictions file records,
-provenance-bound like the PNGs — and why the PNG's no-image-library
+provenance-bound like the PNGs — why the PNG's no-image-library
 rationale does not transfer (this artifact exists to be interpreted by
-the renderer, not to bypass interpretation).
+the renderer, not to bypass interpretation), and stating the PNGs'
+role precisely: a record of predicted code values for provenance and
+instrument-side reference, not a playback stimulus.
 
 ### EXR probe writer §road:exr-probe-writer
 
