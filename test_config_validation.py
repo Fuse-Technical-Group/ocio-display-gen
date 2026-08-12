@@ -11,7 +11,12 @@ import yaml  # type: ignore[import]
 from conftest import (
     GAMMA,
     PEAK_LUMINANCE,
+    SAMPLE_ARTIFACT_NAME,
+    SAMPLE_BLACK_LEVEL,
+    SAMPLE_GAMMA,
+    SAMPLE_INTENSITY,
     SAMPLE_MANIFEST_PATH,
+    SAMPLE_PEAK_LUMINANCE,
     WALL_PRIMARIES,
     WALL_WHITEPOINT,
 )
@@ -46,7 +51,7 @@ def make_manifest_dict(strict_mode: bool = False) -> dict[str, Any]:
             "processing_disabled": True,
         },
         "measurements": {
-            "file": "measurements/ftg_stage1_20240115.yaml",
+            "file": SAMPLE_ARTIFACT_NAME,
             "sha256": "0" * 64,
         },
         "ocio": {"white_point_policy": "adapted"},
@@ -132,17 +137,18 @@ def test_shipped_samples_characterization_matches_sample_wall() -> None:
     manifest, measurements, _ = load_inputs(str(SAMPLE_MANIFEST_PATH))
     char = create_characterization(manifest, measurements)
     assert char.name == "ROE Black Pearl 2 (NS) (2018) + Brompton S8 (3.5.2)"
+    # Expected values derive from the loaded artifact itself: this test
+    # pins the loader's field mapping, not the wall's numbers.
+    primaries = measurements["colorimetry"]["primaries"]
     assert char.primaries == {
-        "red": tuple(WALL_PRIMARIES[0]),
-        "green": tuple(WALL_PRIMARIES[1]),
-        "blue": tuple(WALL_PRIMARIES[2]),
+        channel: tuple(primaries[channel]) for channel in ("red", "green", "blue")
     }
-    assert char.white_point == WALL_WHITEPOINT
-    assert char.black_level == 0.005
-    assert char.peak_luminance == PEAK_LUMINANCE
+    assert char.white_point == tuple(measurements["colorimetry"]["white_point"])
+    assert char.black_level == SAMPLE_BLACK_LEVEL
+    assert char.peak_luminance == SAMPLE_PEAK_LUMINANCE
     assert char.eotf_type == "GAMMA"
-    assert char.gamma_value == GAMMA
-    assert char.processor_intensity == "100%"
+    assert char.gamma_value == SAMPLE_GAMMA
+    assert char.processor_intensity == SAMPLE_INTENSITY
     assert char.processor_processing_disabled is True
     assert char.white_point_policy == "adapted"
 

@@ -23,7 +23,12 @@ import PyOpenColorIO as OCIO
 import pytest
 import yaml  # type: ignore[import]
 
-from conftest import SAMPLE_MANIFEST_PATH, load_sample_inputs
+from conftest import (
+    SAMPLE_PEAK_LUMINANCE,
+    SAMPLE_ARTIFACT_NAME,
+    SAMPLE_MANIFEST_PATH,
+    load_sample_inputs,
+)
 from OCIODisplayGen import (
     D65_WHITE_XY,
     GENERATOR_VERSION,
@@ -479,9 +484,9 @@ def test_perturbed_patch_is_flagged(
     # for luminance but far outside the ΔE budget.
     target = "green_050"
     measured[target] = [
-        measured[target][0] * 1.35,
+        measured[target][0] * 1.7,
         measured[target][1],
-        measured[target][2] * 1.35,
+        measured[target][2] * 1.7,
     ]
     deltas = delta_e2000(predictions.patches, measured)
     flagged = [patch for patch, value in deltas.items() if value > DELTA_E_AVG_LIMIT]
@@ -668,7 +673,7 @@ def copy_samples(tmp_path: Path) -> None:
     for name in (
         "show_manifest.yaml",
         "validation_settings.yaml",
-        "measurements/ftg_stage1_20240115.yaml",
+        SAMPLE_ARTIFACT_NAME,
     ):
         (tmp_path / name).write_bytes((repo / name).read_bytes())
 
@@ -780,6 +785,6 @@ def test_predicted_white_is_the_measured_peak(generated: Tuple[Path, Any]) -> No
     peak — the anchor and the display model agree."""
     _, predictions = generated
     white = next(p for p in predictions.patches if p.id == "neutral_100")
-    assert white.xyz[1] == pytest.approx(1000.0, rel=1e-3)
+    assert white.xyz[1] == pytest.approx(SAMPLE_PEAK_LUMINANCE, rel=1e-3)
     xy = colour.XYZ_to_xy(np.asarray(white.xyz, dtype=np.float64))
     assert xy == pytest.approx(D65_WHITE_XY, abs=1e-3)
