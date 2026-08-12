@@ -9,6 +9,7 @@ import pytest
 from conftest import (
     GAMMA,
     PEAK_LUMINANCE,
+    SAMPLE_INTENSITY,
     STUDIO_CONFIG_URI,
     WALL_PRIMARIES,
     WALL_WHITEPOINT,
@@ -243,7 +244,7 @@ def test_description_omits_intensity_when_absent() -> None:
 
 def test_yaml_processor_state_parsed() -> None:
     char = create_characterization(*load_sample_inputs())
-    assert char.processor_intensity == "100%"
+    assert char.processor_intensity == SAMPLE_INTENSITY
     assert char.processor_processing_disabled is True
 
 

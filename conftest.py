@@ -31,11 +31,24 @@ def load_sample_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
     return manifest, measurements
 
 
-# Sample wall measurements from the shipped measurements artifact
+# The synthetic test wall: tests that build characterizations from
+# these constants assert values precomputed from them. Independent of
+# the shipped samples on purpose — swapping the artifact of record
+# must not move this wall.
 WALL_PRIMARIES = np.array([[0.680, 0.320], [0.265, 0.690], [0.150, 0.060]])
 WALL_WHITEPOINT = (0.3127, 0.3290)
 PEAK_LUMINANCE = 1000.0
 GAMMA = 2.4
+
+# Values derived from the shipped inputs, for tests that exercise the
+# shipped samples: replacing the artifact of record cannot
+# desynchronize these.
+_manifest, _measurements = load_sample_inputs()
+SAMPLE_ARTIFACT_NAME = _manifest["measurements"]["file"]
+SAMPLE_PEAK_LUMINANCE = _measurements["luminance"]["peak_luminance"]
+SAMPLE_BLACK_LEVEL = _measurements["luminance"]["black_level"]
+SAMPLE_INTENSITY = _manifest["signal_contract"]["intensity"]
+SAMPLE_GAMMA = _manifest["signal_contract"]["eotf"]["gamma_value"]
 
 
 def make_characterization(

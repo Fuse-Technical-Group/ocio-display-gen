@@ -12,7 +12,11 @@ import PyOpenColorIO as OCIO
 import pytest
 import yaml  # type: ignore[import]
 
-from conftest import ACES2_STUDIO_CONFIG_URI, SAMPLE_MANIFEST_PATH
+from conftest import (
+    ACES2_STUDIO_CONFIG_URI,
+    SAMPLE_ARTIFACT_NAME,
+    SAMPLE_MANIFEST_PATH,
+)
 from OCIODisplayGen import (
     GENERATOR_VERSION,
     create_characterization,
@@ -23,7 +27,7 @@ from OCIODisplayGen import (
 )
 
 REPO_DIR = SAMPLE_MANIFEST_PATH.parent
-ARTIFACT_NAME = "measurements/ftg_stage1_20240115.yaml"
+ARTIFACT_NAME = SAMPLE_ARTIFACT_NAME
 
 
 def sha256_file(path: Path) -> str:
