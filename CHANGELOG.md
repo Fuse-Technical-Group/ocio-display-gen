@@ -1,3 +1,10 @@
+# [0.3.0](https://github.com/Fuse-Technical-Group/ocio-display-gen/compare/v0.2.1...v0.3.0) (2026-08-12)
+
+
+### Features
+
+* **measurements:** promote the first machine-measured bench artifact ([8ef4519](https://github.com/Fuse-Technical-Group/ocio-display-gen/commit/8ef4519830d774f06b0b7679cf53c2b1451973de))
+
 ## [0.2.1](https://github.com/Fuse-Technical-Group/ocio-display-gen/compare/v0.2.0...v0.2.1) (2026-08-11)
 
 
