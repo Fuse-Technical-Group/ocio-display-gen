@@ -24,9 +24,9 @@ import pytest
 import yaml  # type: ignore[import]
 
 from conftest import (
-    SAMPLE_PEAK_LUMINANCE,
     SAMPLE_ARTIFACT_NAME,
     SAMPLE_MANIFEST_PATH,
+    SAMPLE_PEAK_LUMINANCE,
     load_sample_inputs,
 )
 from OCIODisplayGen import (

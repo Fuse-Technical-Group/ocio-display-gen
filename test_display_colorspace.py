@@ -8,8 +8,8 @@ import pytest
 
 from conftest import (
     GAMMA,
-    SAMPLE_INTENSITY,
     PEAK_LUMINANCE,
+    SAMPLE_INTENSITY,
     STUDIO_CONFIG_URI,
     WALL_PRIMARIES,
     WALL_WHITEPOINT,
