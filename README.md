@@ -40,7 +40,7 @@ having an unknown algorithm in the display do the transformation.
 
 3. **Edit configuration files**:
    - `show_manifest.yaml` - Your show decisions (naming, signal contract, base config selection) and the promotion pointer to the measurements artifact
-   - `measurements/ftg_stage1_20240115.yaml` - Measurements artifact of record (machine-format; the shipped file is a hand-built sample)
+   - `measurements/ftg_bench_20260811.yaml` - Measurements artifact of record, machine-written by a `color-wrangler characterize` session
    - `validation_settings.yaml` - Validation parameters (optional, uses defaults if missing)
 
 4. **Generate custom configuration**:
@@ -59,7 +59,7 @@ having an unknown algorithm in the display do the transformation.
 
 2. **Edit configuration files**:
    - `show_manifest.yaml` - Your show decisions (naming, signal contract, base config selection) and the promotion pointer to the measurements artifact
-   - `measurements/ftg_stage1_20240115.yaml` - Measurements artifact of record (machine-format; the shipped file is a hand-built sample)
+   - `measurements/ftg_bench_20260811.yaml` - Measurements artifact of record, machine-written by a `color-wrangler characterize` session
    - `validation_settings.yaml` - Validation parameters (optional, uses defaults if missing)
 
 3. **Generate custom configuration**:
@@ -117,15 +117,15 @@ Human-authored and reviewed. Contains:
 ### Measurements artifact (`measurements/*.yaml`)
 
 Machine-written by a characterization session, immutable, never
-hand-edited (the shipped `measurements/ftg_stage1_20240115.yaml` is a
-hand-built sample). Contains measured primaries and white point, black
+hand-edited (the shipped `measurements/ftg_bench_20260811.yaml` was
+measured by color-wrangler on the FTG bench rig). Contains measured primaries and white point, black
 level and peak luminance, ambient floor, instrument identity,
 processor-state snapshot, and timestamps. Accept a measurement run by
 recording its sha256 in the show manifest's promotion pointer;
 generation refuses when the artifact on disk no longer matches the
 recorded hash.
 
-The shipped `show_manifest.yaml` and `measurements/ftg_stage1_20240115.yaml`
+The shipped `show_manifest.yaml` and `measurements/ftg_bench_20260811.yaml`
 are a working example; see those files for the schema.
 
 ## Base OCIO Configuration Selection
