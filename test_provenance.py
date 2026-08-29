@@ -17,7 +17,7 @@ from conftest import (
     SAMPLE_ARTIFACT_NAME,
     SAMPLE_MANIFEST_PATH,
 )
-from OCIODisplayGen import (
+from ocio_display_gen._core import (
     GENERATOR_VERSION,
     create_characterization,
     create_display_colorspace_from_characterization,

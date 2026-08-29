@@ -20,7 +20,7 @@ from conftest import (
     WALL_PRIMARIES,
     WALL_WHITEPOINT,
 )
-from OCIODisplayGen import (
+from ocio_display_gen._core import (
     create_characterization,
     load_inputs,
     resolve_measurements_pointer,

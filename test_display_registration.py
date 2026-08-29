@@ -12,7 +12,7 @@ from conftest import (
     build_reloaded_config,
     d65_xyz,
 )
-from OCIODisplayGen import COLORIMETRIC_VIEW
+from ocio_display_gen._core import COLORIMETRIC_VIEW
 
 
 @pytest.fixture(scope="module")

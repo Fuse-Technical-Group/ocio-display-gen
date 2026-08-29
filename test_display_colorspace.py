@@ -17,7 +17,7 @@ from conftest import (
     load_sample_inputs,
     make_characterization,
 )
-from OCIODisplayGen import (
+from ocio_display_gen._core import (
     D65_WHITE_XY,
     DISPLAY_REFERENCE,
     DisplayCharacterization,
@@ -287,7 +287,7 @@ def test_fractional_measured_peak_parameterizes_the_fixed_functions(
     the nearest nit while the radiometric anchor keeps the measured
     value exactly (regression: color-wrangler walking-skeleton round
     trip failed on peak 601.886)."""
-    from OCIODisplayGen import _measured_wall_gamut
+    from ocio_display_gen._core import _measured_wall_gamut
 
     char = make_characterization()
     char.peak_luminance = 601.886
@@ -299,7 +299,7 @@ def test_fractional_measured_peak_parameterizes_the_fixed_functions(
     import PyOpenColorIO as OCIO
 
     from conftest import ACES2_STUDIO_CONFIG_URI
-    from OCIODisplayGen import register_display
+    from ocio_display_gen._core import register_display
 
     config = OCIO.Config.CreateFromFile(ACES2_STUDIO_CONFIG_URI)
     cs = create_display_colorspace_from_characterization(char)

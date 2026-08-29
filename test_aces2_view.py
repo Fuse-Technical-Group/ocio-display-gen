@@ -15,7 +15,7 @@ from conftest import (
     make_characterization,
     scene_view_cpu,
 )
-from OCIODisplayGen import (
+from ocio_display_gen._core import (
     ACES2_VIEW,
     COLORIMETRIC_VIEW,
     REFERENCE_LUMINANCE,

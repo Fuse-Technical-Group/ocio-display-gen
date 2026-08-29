@@ -17,7 +17,7 @@ from conftest import (
     make_characterization,
     scene_view_cpu,
 )
-from OCIODisplayGen import (
+from ocio_display_gen._core import (
     AP0_CHROMATICITIES,
     AP0_TO_XYZ_D65_BUILTIN,
     COLORIMETRIC_VIEW,

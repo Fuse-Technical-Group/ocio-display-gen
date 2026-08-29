@@ -4,7 +4,6 @@
 # It uses the colour-science library to create the colorspace and the PyOpenColorIO
 # library to create the OCIO config
 
-import argparse
 import hashlib
 import hmac
 import ntpath
@@ -12,7 +11,6 @@ import os
 import posixpath
 import re
 import struct
-import sys
 import zlib
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, cast
 
@@ -766,6 +764,7 @@ def register_display(
 # show manifest plus the machine-format measurements artifact its
 # promotion pointer names, consumed together.
 SHOW_MANIFEST_FILE = "show_manifest.yaml"
+VALIDATION_SETTINGS_FILE = "validation_settings.yaml"
 
 # Generator version recorded in provenance metadata (§spec:provenance).
 # A module constant kept equal to pyproject's [project] version — the
@@ -1102,8 +1101,15 @@ def create_characterization(
     return char
 
 
-def load_validation_settings() -> Dict[str, Any]:
-    """Load validation settings from external file."""
+def load_validation_settings(beside: Optional[str] = None) -> Dict[str, Any]:
+    """Load validation settings, resolved beside the manifest.
+
+    `beside` is the manifest path whose directory holds the settings. It
+    used to be the process's working directory, which made the same
+    manifest pass from the repository and fail from anywhere else: the
+    bounds silently reverted to defaults, and a display outside them was
+    rejected for where the caller happened to stand.
+    """
 
     # Default validation settings
     default_validation: Dict[str, Any] = {
@@ -1119,7 +1125,11 @@ def load_validation_settings() -> Dict[str, Any]:
     }
 
     # Load external validation settings file
-    validation_file = "validation_settings.yaml"
+    validation_file = (
+        os.path.join(os.path.dirname(os.path.abspath(beside)), VALIDATION_SETTINGS_FILE)
+        if beside
+        else VALIDATION_SETTINGS_FILE
+    )
     external_validation: Dict[str, Any] = {}
 
     if os.path.exists(validation_file):
@@ -1411,14 +1421,18 @@ def validate_measurements_data(
     return True
 
 
-def validate_inputs(manifest: Dict[str, Any], measurements: Dict[str, Any]) -> bool:
+def validate_inputs(
+    manifest: Dict[str, Any],
+    measurements: Dict[str, Any],
+    beside: Optional[str] = None,
+) -> bool:
     """
     Validate both inputs along the human/machine line
     (§spec:characterization-model): manifest checks against the
     show manifest, plausibility checks against the measurements
     artifact. Strict mode comes from the show manifest.
     """
-    validation_config = load_validation_settings()
+    validation_config = load_validation_settings(beside)
     strict_mode = manifest.get("validation", {}).get("strict_mode", False)
 
     if not validate_manifest_data(manifest, validation_config, strict_mode):
@@ -2237,180 +2251,3 @@ def create_base_ocio_config(manifest: Dict[str, Any]) -> "OCIO.Config":
         print("     - ocio://aces-config-v2.1.0_aces-v1.3_ocio-v2.3")
         print("   Please check your configuration parameters.")
         raise
-
-
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    """Command line surface: generate by default, or inspect a
-    predictions artifact."""
-    parser = argparse.ArgumentParser(
-        prog="OCIODisplayGen.py",
-        description=(
-            f"Generate an OCIO config for a measured wall from "
-            f"'{SHOW_MANIFEST_FILE}' and the measurements artifact it "
-            f"promotes, plus the verification predictions and probe "
-            f"imagery a color-wrangler session measures against."
-        ),
-    )
-    parser.add_argument(
-        "--check-predictions",
-        metavar="FILE",
-        help=(
-            "Report what a predictions artifact describes and verify it "
-            "still matches the config it names, then exit."
-        ),
-    )
-    return parser.parse_args(argv)
-
-
-def main():
-    args = parse_args()
-    if args.check_predictions:
-        try:
-            check_predictions(args.check_predictions)
-        except ValueError as e:
-            print(f"❌ Error: {e}")
-            sys.exit(1)
-        return
-
-    print("=== OCIO Display Generator ===")
-    print(f"Loading manifest from '{SHOW_MANIFEST_FILE}'...")
-    try:
-        manifest, measurements, provenance = load_inputs(SHOW_MANIFEST_FILE)
-    except ValueError as e:
-        print(f"❌ Error: {e}")
-        sys.exit(1)
-    print(
-        f"✓ Loaded measurements artifact '{provenance.measurements_file}' "
-        f"(promotion hash verified)"
-    )
-    print("Validating configuration data...")
-    if not validate_inputs(manifest, measurements):
-        print("❌ Configuration validation failed. Please check your inputs.")
-        sys.exit(1)
-    print("Creating display characterization...")
-    characterization = create_characterization(manifest, measurements)
-    print(f"\nDisplay: {characterization.name}")
-    print(f"Peak luminance: {characterization.peak_luminance} cd/m²")
-    print(f"Black level: {characterization.black_level} cd/m²")
-    print(f"Contrast ratio: {characterization.contrast_ratio:.0f}:1")
-    print(f"EOTF: {characterization.eotf_type}")
-    intensity = characterization.processor_intensity
-    print(
-        f"Processor intensity: "
-        f"{intensity if intensity is not None else '(not recorded)'}"
-    )
-    print(
-        f"Color processing / dynamic features: "
-        f"{describe_processing_state(characterization.processor_processing_disabled)}"
-    )
-    print(f"White point policy: {characterization.white_point_policy}")
-    # VP Radiometric settings are generation decisions, not measurements,
-    # so they live under ocio: (§spec:view-transform).
-    vp_settings = manifest.get("ocio", {}).get("vp_radiometric", {})
-    try:
-        nits_anchor = float(vp_settings.get("nits_anchor", DEFAULT_NITS_ANCHOR))
-    except (TypeError, ValueError):
-        print("❌ Error: 'ocio.vp_radiometric.nits_anchor' must be a number")
-        sys.exit(1)
-    overflow_policy = vp_settings.get("overflow_policy", DEFAULT_OVERFLOW_POLICY)
-    print(f"VP Radiometric nits anchor: {nits_anchor} cd/m²")
-    print(f"VP Radiometric overflow policy: {overflow_policy}")
-    output_config_path = generate_output_filename(manifest, characterization)
-    try:
-        print("\nCreating base OCIO config...")
-        ocio_config_obj = create_base_ocio_config(manifest)
-        scene_reference, display_reference = derive_reference_spaces(ocio_config_obj)
-        print(f"Scene reference space: {scene_reference}")
-        print(f"Display reference space: {display_reference}")
-        validate_display_reference(display_reference)
-        cs = create_display_colorspace_from_characterization(characterization)
-        display_name = register_display(
-            ocio_config_obj,
-            cs,
-            characterization,
-            nits_anchor=nits_anchor,
-            overflow_policy=overflow_policy,
-        )
-        record_provenance(
-            ocio_config_obj,
-            provenance,
-            manifest.get("show", {}).get("description"),
-        )
-        try:
-            ocio_config_obj.validate()
-        except Exception as exc:
-            raise RuntimeError(
-                f"Generated config failed OCIO validation: {exc}"
-            ) from exc
-        with open(output_config_path, "w", encoding="utf-8") as f:
-            f.write(ocio_config_obj.serialize())
-        # Predictions bind to the config's bytes, so they are built from
-        # the file just written (§spec:verification, §spec:provenance).
-        predictions = build_predictions(
-            ocio_config_obj,
-            display_name,
-            characterization,
-            nits_anchor,
-            output_config_path,
-        )
-        predictions_file = predictions_path(output_config_path)
-        with open(predictions_file, "w", encoding="utf-8") as f:
-            f.write(emit_predictions(predictions))
-        probe_dir = probe_directory(output_config_path)
-        probe_files = write_probe_imagery(probe_dir, predictions)
-        print("\n✅ Successfully created OCIO config!")
-        print(f"   Output file: {output_config_path}")
-        print(f"   Predictions: {predictions_file}")
-        print(
-            f"   Probe imagery: {probe_dir}/ "
-            f"({len(probe_files)} files: PNG+EXR per patch, {predictions.view})"
-        )
-        print("\nProvenance recorded in the config description:")
-        for line in provenance_description(provenance).splitlines():
-            print(f"   {line}")
-        print(f"\nRegistered display: {display_name}")
-        default_view = ocio_config_obj.getDefaultView(display_name)
-        for view in ocio_config_obj.getViews(display_name):
-            marker = " (default)" if str(view) == default_view else ""
-            print(f"   View: {view}{marker}")
-        print(
-            f"   {VP_RADIOMETRIC_VIEW}: anchor {nits_anchor} cd/m², "
-            f"overflow policy {overflow_policy}"
-        )
-        print(
-            f"   {ACES2_VIEW}: output transform limited to measured "
-            f"peak {characterization.peak_luminance} cd/m² and "
-            f"measured primaries/white"
-        )
-        print("\n📋 Usage Instructions:")
-        print(
-            f"1. Set OCIO environment variable: export OCIO="
-            f"{os.path.abspath(output_config_path)}"
-        )
-        print(
-            f"2. In your application, select display '{display_name}' "
-            f"with view '{VP_RADIOMETRIC_VIEW}'"
-        )
-        print(
-            f"3. To verify: display '{probe_dir}/*.png' on the wall, "
-            f"measure each patch, and compare against '{predictions_file}'"
-        )
-        print(
-            f"4. To verify the renderer: load '{probe_dir}/*.exr' tagged as "
-            f"'{predictions.scene_reference}' — the input space is "
-            f"load-bearing; a renderer that assumes another space produces "
-            f"plausible but wrong output — through display "
-            f"'{display_name}', view '{predictions.view}', and compare "
-            f"against the same predictions"
-        )
-    except Exception as e:
-        print(f"❌ Error creating OCIO config: {e}")
-        import traceback
-
-        traceback.print_exc()
-        sys.exit(1)
-
-
-# Example usage for single display characterization
-if __name__ == "__main__":
-    main()
