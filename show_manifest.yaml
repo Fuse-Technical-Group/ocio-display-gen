@@ -54,7 +54,8 @@ signal_contract:
   # Two artifacts recorded under different panel_state describe different
   # displays and shall not be compared.
   panel_state:
-    operating_mode: "Default"    # "Default" or "Studio Mode" (Tessera 3.3+)
+    operating_mode: "Normal Mode"   # as the panel OSD reads it verbatim,
+                                    # e.g. "Normal Mode" or "Studio Mode"
     selected_calibration: "Internal Colour Cal (Factory)"
 
   # Per-feature processor state, declared and audited one feature at a
