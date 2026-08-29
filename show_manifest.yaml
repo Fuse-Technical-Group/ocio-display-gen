@@ -86,8 +86,8 @@ signal_contract:
 # the sha256 hex digest of the artifact's bytes. Recording the hash is
 # the human act of acceptance — a signature, not an edit.
 measurements:
-  file: "measurements/ftg_bench_20260811.yaml"
-  sha256: "ed9106ff60a98da6ece809bab236be75b5eddc9ac27090d23ff9ce49dfac9937"
+  file: "measurements/ftg_bench_20260829.yaml"
+  sha256: "38dbbcef55cd51fa0ebe81df4d1633187f58a53c9c30f03c34b58d2656c62ee9"
 
 # OCIO CONFIGURATION
 ocio:
