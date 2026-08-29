@@ -1,3 +1,11 @@
+# [0.5.0](https://github.com/Fuse-Technical-Group/ocio-display-gen/compare/v0.4.0...v0.5.0) (2026-08-29)
+
+
+### Features
+
+* **manifest:** promote the dark-room characterization ([3d1eb04](https://github.com/Fuse-Technical-Group/ocio-display-gen/commit/3d1eb0427cf968ed694bb979d739173562f6ec8b))
+* **measurements:** characterize the bench wall in a darkened room ([98f2742](https://github.com/Fuse-Technical-Group/ocio-display-gen/commit/98f2742517bb9195dc442592711bb12149984e22))
+
 # [0.4.0](https://github.com/Fuse-Technical-Group/ocio-display-gen/compare/v0.3.0...v0.4.0) (2026-08-29)
 
 
