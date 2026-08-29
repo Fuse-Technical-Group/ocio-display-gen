@@ -1,0 +1,56 @@
+name: quality
+
+# The two checks the `Flywheel - review` ruleset requires by name —
+# `markdownlint` and `shellcheck` — and which nothing in this repository
+# emitted, so every pull request into the default branch sat at "Expected —
+# Waiting for status to be reported" and could not merge. The job keys below
+# ARE the check names the ruleset matches; renaming one silently re-blocks
+# the branch.
+#
+# Neither ran here under those names: markdownlint only as a step inside the
+# reusable governance-lint workflow, and shellcheck not at all — this
+# repository ships no shell scripts, so that job passes on an empty set and
+# exists to satisfy the context. A step's name is not a check's name, which is
+# why the ruleset never saw them.
+on:
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  # Skip on Flywheel's own release and back-merge commits, which carry
+  # generated content rather than reviewable changes. The guard is per job so
+  # each required check still resolves rather than hanging — a skipped job
+  # satisfies a required context, an absent one does not.
+  markdownlint:
+    if: >-
+      !contains(github.event.pull_request.title || '', ': promote ') &&
+      !startsWith(github.event.merge_group.head_commit.message || '', 'chore(release):') &&
+      !startsWith(github.event.merge_group.head_commit.message || '', 'chore: back-merge')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Root governance and landing documents. The four legacy design
+      # documents are ignored rather than fixed — see
+      # .markdownlint-cli2.jsonc. Config is .markdownlint.json plus that
+      # ignore list.
+      - uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24
+        with:
+          globs: "*.md"
+
+  shellcheck:
+    if: >-
+      !contains(github.event.pull_request.title || '', ': promote ') &&
+      !startsWith(github.event.merge_group.head_commit.message || '', 'chore(release):') &&
+      !startsWith(github.event.merge_group.head_commit.message || '', 'chore: back-merge')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # `severity: error` is the enforced baseline, as in the sibling
+      # repositories: the floor keeps an info-level finding — SC1091 from a
+      # source this action does not follow, say — out of a required gate.
+      - uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # v2.0.0
+        with:
+          severity: error
