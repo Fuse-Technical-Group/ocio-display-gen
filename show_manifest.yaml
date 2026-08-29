@@ -36,9 +36,29 @@ signal_contract:
                        # confirmed via the Tessera API.
   intensity: "1800 nits"     # Locked intensity/brightness as configured
                              # on the processor (percent or nits)
-  processing_disabled: true  # Color processing and dynamic features
-                             # (dynamic calibration, dynamic contrast,
-                             # overdrive, etc.) are disabled
+
+  # Per-feature processor state, declared and audited one feature at a
+  # time. A single `processing_disabled` boolean used to stand here; it
+  # conflated two categories that behave differently under measurement,
+  # and the session cannot translate it into intent, so it is refused.
+  #
+  # Static per-pixel transfer — the same code produces the same light
+  # every frame. This IS the display, and a characterization measures
+  # it. Left on deliberately: Dark Magic buys back the effective bit
+  # depth the panel loses at low drive, and PureTone corrects the LED
+  # and driver non-linearity that otherwise casts the shadows
+  # off-neutral as each primary runs out of PWM resolution. Both fix
+  # constraints below the layer any OCIO config can reach, and both are
+  # on in show — so they are on when we measure.
+  processing:
+    dark-magic: true
+    puretone: true
+    extended-bit-depth: true
+
+    # Frame-adaptive: adapts to surrounding frames, so one code stops
+    # implying one luminance and the measurement stops meaning
+    # anything. Must be off.
+    overdrive: false
 
 # PROMOTION POINTER (§spec:provenance)
 # The measurement artifact of record: path relative to this file, plus
