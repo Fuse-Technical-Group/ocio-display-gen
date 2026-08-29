@@ -1,3 +1,16 @@
+# [0.4.0](https://github.com/Fuse-Technical-Group/ocio-display-gen/compare/v0.3.0...v0.4.0) (2026-08-29)
+
+
+### Bug Fixes
+
+* **manifest:** the panel reads "Normal Mode", not "Default" ([e09bdae](https://github.com/Fuse-Technical-Group/ocio-display-gen/commit/e09bdae19d2ee14d4ecfac0ac683151fb01af335))
+
+
+### Features
+
+* **manifest:** attest panel-resident state in the signal contract ([ffa5002](https://github.com/Fuse-Technical-Group/ocio-display-gen/commit/ffa5002e946c6abb5b9695af208dedb213effd7c))
+* **manifest:** declare the signal contract's processing per feature ([5fafaeb](https://github.com/Fuse-Technical-Group/ocio-display-gen/commit/5fafaeb8dc36e9396540c3914d54add651896dcd))
+
 # [0.3.0](https://github.com/Fuse-Technical-Group/ocio-display-gen/compare/v0.2.1...v0.3.0) (2026-08-12)
 
 
