@@ -6,7 +6,7 @@ import numpy as np
 import PyOpenColorIO as OCIO
 import pytest
 
-import OCIODisplayGen
+import ocio_display_gen._core as OCIODisplayGen
 from conftest import (
     ACES2_STUDIO_CONFIG_URI,
     STUDIO_CONFIG_URI,
@@ -14,7 +14,7 @@ from conftest import (
     WALL_WHITEPOINT,
     make_characterization,
 )
-from OCIODisplayGen import (
+from ocio_display_gen._core import (
     D65_WHITE_XY,
     DISPLAY_REFERENCE,
     KNOWN_DISPLAY_REFERENCES,

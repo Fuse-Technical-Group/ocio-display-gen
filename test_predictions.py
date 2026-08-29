@@ -29,7 +29,7 @@ from conftest import (
     SAMPLE_PEAK_LUMINANCE,
     load_sample_inputs,
 )
-from OCIODisplayGen import (
+from ocio_display_gen._core import (
     D65_WHITE_XY,
     GENERATOR_VERSION,
     PREDICTIONS_SCHEMA,
@@ -49,7 +49,6 @@ from OCIODisplayGen import (
     create_display_colorspace_from_characterization,
     derive_reference_spaces,
     emit_predictions,
-    main,
     parse_predictions,
     probe_directory,
     probe_patch_exr,
@@ -57,6 +56,7 @@ from OCIODisplayGen import (
     register_display,
     write_probe_imagery,
 )
+from ocio_display_gen.cli import main
 
 # The nits anchor the shipped show manifest records.
 NITS_ANCHOR = 300.0
@@ -687,7 +687,7 @@ def cli_output(tmp_path_factory: pytest.TempPathFactory) -> Path:
     copy_samples(directory)
     with pytest.MonkeyPatch.context() as patch:
         patch.chdir(directory)
-        patch.setattr("sys.argv", ["OCIODisplayGen.py"])
+        patch.setattr("sys.argv", ["ocio_display_gen"])
         main()
     return directory
 
@@ -754,7 +754,7 @@ def test_cli_checks_a_predictions_file_against_its_config(
     monkeypatch.setattr(
         "sys.argv",
         [
-            "OCIODisplayGen.py",
+            "ocio_display_gen",
             "--check-predictions",
             "custom_display_config.predictions.yaml",
         ],
@@ -765,9 +765,7 @@ def test_cli_checks_a_predictions_file_against_its_config(
     assert "matches" in output
 
     (tmp_path / "custom_display_config.ocio").write_text("tampered\n", encoding="utf-8")
-    with pytest.raises(SystemExit) as exit_info:
-        main()
-    assert exit_info.value.code == 1
+    assert main() == 1
     assert "does not match" in capsys.readouterr().out
 
 

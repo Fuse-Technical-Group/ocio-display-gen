@@ -10,7 +10,7 @@ import numpy.typing as npt
 import PyOpenColorIO as OCIO
 import pytest
 
-from OCIODisplayGen import (
+from ocio_display_gen._core import (
     D65_WHITE_XY,
     DisplayCharacterization,
     create_display_colorspace_from_characterization,

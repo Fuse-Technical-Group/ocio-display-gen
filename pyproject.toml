@@ -19,6 +19,9 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+[project.scripts]
+ocio-display-gen = "ocio_display_gen.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "mypy>=1.8.0",
@@ -29,6 +32,13 @@ dev = [
     "pytest>=8.0.0",
     "ruff>=0.1.0",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ocio_display_gen"]
 
 [tool.ruff]
 line-length = 88
