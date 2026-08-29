@@ -252,7 +252,7 @@ def test_yaml_processor_state_absent_is_none() -> None:
     manifest, measurements = load_sample_inputs()
     contract = manifest["signal_contract"]
     contract.pop("intensity", None)
-    contract.pop("processing_disabled", None)
+    contract.pop("processing", None)
     char = create_characterization(manifest, measurements)
     assert char.processor_intensity is None
     assert char.processor_processing_disabled is None
@@ -267,7 +267,7 @@ def inputs_without_processor_state(strict_mode: bool) -> tuple[dict, dict]:
     manifest["validation"]["strict_mode"] = strict_mode
     contract = manifest["signal_contract"]
     contract.pop("intensity", None)
-    contract.pop("processing_disabled", None)
+    contract.pop("processing", None)
     return manifest, measurements
 
 

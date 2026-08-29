@@ -36,9 +36,50 @@ signal_contract:
                        # confirmed via the Tessera API.
   intensity: "1800 nits"     # Locked intensity/brightness as configured
                              # on the processor (percent or nits)
-  processing_disabled: true  # Color processing and dynamic features
-                             # (dynamic calibration, dynamic contrast,
-                             # overdrive, etc.) are disabled
+
+  # OPERATOR ATTESTATION — read these off the panel OSD, not the software.
+  # Nothing here is readable from the Tessera HTTP API, and every one of
+  # them moves the measurement. They live on the receiver card and
+  # surface only on the panel OSD, so the operator is the only instrument
+  # that can report them. A session confirms these values interactively
+  # before it measures, and records them in the artifact.
+  #
+  # Measured on this rig, 2026-08-29: switching selected_calibration took
+  # white from 1035 to 1476 cd/m² and moved it from 0.0075 to 0.0040
+  # du'v' of D65, while all 302 API leaves stayed identical but for the
+  # clock and the chassis temperatures. Studio Mode is the same class of
+  # invisibility: it trades peak luminance for low-end bit depth and
+  # stores its own PureTone correction.
+  #
+  # Two artifacts recorded under different panel_state describe different
+  # displays and shall not be compared.
+  panel_state:
+    operating_mode: "Normal Mode"   # as the panel OSD reads it verbatim,
+                                    # e.g. "Normal Mode" or "Studio Mode"
+    selected_calibration: "Internal Colour Cal (Factory)"
+
+  # Per-feature processor state, declared and audited one feature at a
+  # time. A single `processing_disabled` boolean used to stand here; it
+  # conflated two categories that behave differently under measurement,
+  # and the session cannot translate it into intent, so it is refused.
+  #
+  # Static per-pixel transfer — the same code produces the same light
+  # every frame. This IS the display, and a characterization measures
+  # it. Left on deliberately: Dark Magic buys back the effective bit
+  # depth the panel loses at low drive, and PureTone corrects the LED
+  # and driver non-linearity that otherwise casts the shadows
+  # off-neutral as each primary runs out of PWM resolution. Both fix
+  # constraints below the layer any OCIO config can reach, and both are
+  # on in show — so they are on when we measure.
+  processing:
+    dark-magic: true
+    puretone: true
+    extended-bit-depth: true
+
+    # Frame-adaptive: adapts to surrounding frames, so one code stops
+    # implying one luminance and the measurement stops meaning
+    # anything. Must be off.
+    overdrive: false
 
 # PROMOTION POINTER (§spec:provenance)
 # The measurement artifact of record: path relative to this file, plus

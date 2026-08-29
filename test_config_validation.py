@@ -48,7 +48,12 @@ def make_manifest_dict(strict_mode: bool = False) -> dict[str, Any]:
         "signal_contract": {
             "eotf": {"type": "GAMMA", "gamma_value": GAMMA},
             "intensity": "100%",
-            "processing_disabled": True,
+            "processing": {
+                "dark-magic": True,
+                "puretone": True,
+                "extended-bit-depth": True,
+                "overdrive": False,
+            },
         },
         "measurements": {
             "file": SAMPLE_ARTIFACT_NAME,
@@ -80,7 +85,12 @@ def make_measurements_dict(black_level: float = 0.005) -> dict[str, Any]:
         "processor_state": {
             "eotf": {"type": "GAMMA", "gamma_value": GAMMA},
             "intensity": "100%",
-            "processing_disabled": True,
+            "processing": {
+                "dark-magic": True,
+                "puretone": True,
+                "extended-bit-depth": True,
+                "overdrive": False,
+            },
         },
     }
 

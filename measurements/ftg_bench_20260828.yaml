@@ -1,0 +1,243 @@
+# Machine-written by a `color-wrangler characterize` session;
+# immutable, never hand-edited (§spec:artifact-chain). Promote
+# into a show manifest as {file, sha256}.
+schema: "color-wrangler/measurements/1"
+
+measurement_date: "2026-08-29"
+
+session:
+  start: "2026-08-29T04:52:25.416324+00:00"
+  end: "2026-08-29T04:58:10.660634+00:00"
+
+instrument:
+  manufacturer: "color-wrangler"
+  model: "disciplined-hybrid"
+  serial_number: "A00322+A00140"
+
+# CIE xy chromaticities measured through the full chain
+# (processor + panels), end-to-end black box.
+colorimetry:
+  primaries:
+    red: [0.691574814, 0.307704849]
+    green: [0.193641375, 0.741452546]
+    blue: [0.133393767, 0.056515859]
+  white_point: [0.313136055, 0.317847330]
+
+# Absolute luminance, cd/m².
+luminance:
+  black_level: 0.028419683
+  peak_luminance: 1037.880329962
+
+# Ambient floor at measurement time, cd/m² (wall showing black;
+# reflected ambient plus panel leakage).
+ambient_floor: 0.028419683
+
+# Processor state read at measurement time (read-only snapshot).
+# processing_disabled asserts only that nothing in the path adapts
+# to the content; the per-feature block below is the full state,
+# and static linearization being on is expected, not a fault.
+processor_state:
+  eotf:
+    type: "GAMMA"
+    gamma_value: 2.350000000
+  intensity: "1800 nits"
+  processing_disabled: true
+  processing:
+    dark-magic: true
+    puretone: true
+    extended-bit-depth: true
+    overdrive: false
+
+# Patch protocol (MEASUREMENT.md, versioned with the tool).
+# presentation_order is the unshuffle key: patch names in the
+# order driven (§spec:sessions).
+protocol:
+  name: "color-wrangler/characterize/2"
+  presentation_order:
+    - "red_2048"
+    - "green_2048"
+    - "blue_2048"
+    - "black"
+    - "green_0048"
+    - "red_0048"
+    - "gray_0256"
+    - "red_0768"
+    - "gray_0064"
+    - "gray_1536"
+    - "red_0256"
+    - "blue_0016"
+    - "red_0128"
+    - "blue_1024"
+    - "gray_0096"
+    - "gray_2048"
+    - "gray_0768"
+    - "blue_0024"
+    - "red_0024"
+    - "blue_0768"
+    - "gray_0128"
+    - "red_1024"
+    - "blue"
+    - "blue_0096"
+    - "blue_0128"
+    - "gray_0016"
+    - "green_0384"
+    - "green_0032"
+    - "red_0192"
+    - "green_0256"
+    - "blue_0512"
+    - "red_0096"
+    - "green_0768"
+    - "red_0512"
+    - "red"
+    - "green_1024"
+    - "green_1536"
+    - "red_0384"
+    - "cyan"
+    - "green_0128"
+    - "gray_0192"
+    - "red_1536"
+    - "green_3072"
+    - "green_0096"
+    - "blue_0384"
+    - "blue_0064"
+    - "magenta"
+    - "blue_0048"
+    - "green"
+    - "blue_0256"
+    - "blue_1536"
+    - "green_0064"
+    - "yellow"
+    - "blue_0192"
+    - "red_3072"
+    - "green_0016"
+    - "gray_0512"
+    - "gray_0032"
+    - "gray_1024"
+    - "green_0512"
+    - "green_0024"
+    - "blue_3072"
+    - "green_0192"
+    - "red_0032"
+    - "gray_0024"
+    - "gray_3072"
+    - "blue_0032"
+    - "gray_0048"
+    - "red_0016"
+    - "white"
+    - "gray_0384"
+    - "red_0064"
+  # Elapsed seconds per patch (drive through read), same
+  # order as presentation_order; session-clock derived.
+  patch_seconds: [6.628910000, 9.291472000, 8.020213000, 3.655600000, 2.479892000, 2.554960000, 1.051909000, 0.975408000, 2.032236000, 9.546886000, 1.315446000, 3.636825000, 1.929797000, 0.974909000, 1.895640000, 6.573642000, 21.873809000, 3.652187000, 3.645891000, 0.977989000, 1.688396000, 21.857070000, 4.354450000, 1.967322000, 2.004781000, 3.644892000, 1.038371000, 2.875796000, 1.493359000, 1.265113000, 1.019354000, 2.042080000, 21.887858000, 0.959204000, 3.614156000, 21.884793000, 16.816239000, 1.054920000, 4.164453000, 1.751418000, 1.220221000, 9.571918000, 5.675418000, 2.067194000, 1.123885000, 2.631475000, 3.398277000, 2.927373000, 4.605197000, 1.455222000, 1.011103000, 1.899728000, 3.413985000, 1.868653000, 4.568856000, 3.706944000, 21.886696000, 2.649864000, 21.884829000, 1.009013000, 3.686957000, 5.209737000, 1.616824000, 2.801271000, 2.813093000, 4.640954000, 3.718374000, 1.927260000, 3.692928000, 3.456270000, 1.055153000, 1.949787000]
+
+# Two instruments, one artifact (§spec:sessions).
+# The correction is derived in-session from paired readings of
+# the full-drive R/G/B anchors and applied in software, so it is
+# auditable here rather than buried in the colorimeter.
+instrument_routing:
+  method: "four-color-matrix"
+  spectroradiometer:
+    manufacturer: "Colorimetry Research"
+    model: "CR-300"
+    serial_number: "A00322"
+    firmware: "1.44.0-S28"
+  colorimeter:
+    manufacturer: "Colorimetry Research"
+    model: "CR-120"
+    serial_number: "A00140"
+    firmware: "1.39.0-A28"
+  # XYZ_corrected = correction_matrix @ XYZ_colorimeter.
+  correction_matrix:
+    - [1.096672771, -0.053117929, -0.005626844]
+    - [-0.016732701, 1.035300535, -0.008813093]
+    - [0.001459565, -0.001991557, 1.099132984]
+  # Patches measuring at or above this corrected luminance
+  # (cd/m²) route to the spectroradiometer, the rest to the
+  # disciplined colorimeter.
+  luminance_threshold: 10.000000000
+  # The instrument behind each row, in presentation order.
+  sources: ["spectroradiometer", "spectroradiometer", "spectroradiometer", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "spectroradiometer", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "spectroradiometer", "spectroradiometer", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "spectroradiometer", "spectroradiometer", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "spectroradiometer", "colorimeter", "spectroradiometer", "spectroradiometer", "spectroradiometer", "colorimeter", "spectroradiometer", "colorimeter", "colorimeter", "spectroradiometer", "spectroradiometer", "colorimeter", "colorimeter", "colorimeter", "spectroradiometer", "colorimeter", "spectroradiometer", "colorimeter", "colorimeter", "colorimeter", "spectroradiometer", "colorimeter", "spectroradiometer", "colorimeter", "spectroradiometer", "colorimeter", "spectroradiometer", "colorimeter", "colorimeter", "spectroradiometer", "colorimeter", "colorimeter", "colorimeter", "spectroradiometer", "colorimeter", "colorimeter", "colorimeter", "spectroradiometer", "colorimeter", "colorimeter"]
+
+# Shadow-dense single-channel ramps: absolute XYZ (cd/m²) per
+# driven code, protocol-ordered.
+per_channel_response:
+  red:
+    - {code: 16, xyz: [0.038875549, 0.034140907, 0.024772490]}
+    - {code: 24, xyz: [0.037208191, 0.030614042, 0.020160546]}
+    - {code: 32, xyz: [0.049741488, 0.039114487, 0.025030207]}
+    - {code: 48, xyz: [0.065202238, 0.043282761, 0.020272408]}
+    - {code: 64, xyz: [0.102558061, 0.062249398, 0.024726310]}
+    - {code: 96, xyz: [0.158607701, 0.084552082, 0.020185551]}
+    - {code: 128, xyz: [0.280409742, 0.138936309, 0.020561971]}
+    - {code: 192, xyz: [0.628199107, 0.293148481, 0.020695673]}
+    - {code: 256, xyz: [1.191636225, 0.543584306, 0.021426208]}
+    - {code: 384, xyz: [3.063337136, 1.375510680, 0.022891039]}
+    - {code: 512, xyz: [6.016068074, 2.687696352, 0.025960367]}
+    - {code: 768, xyz: [13.991639585, 6.228065801, 0.034292689]}
+    - {code: 1024, xyz: [26.431740631, 11.776372801, 0.036715554]}
+    - {code: 1536, xyz: [66.913159427, 29.793417599, 0.085647011]}
+    - {code: 2048, xyz: [130.596397946, 58.141884748, 0.114426461]}
+    - {code: 3072, xyz: [335.778024515, 149.409731018, 0.287859673]}
+    - {code: 4095, xyz: [661.310422155, 294.239205317, 0.688813737]}
+  green:
+    - {code: 16, xyz: [0.031812168, 0.030043132, 0.020341428]}
+    - {code: 24, xyz: [0.033119696, 0.034667597, 0.020389501]}
+    - {code: 32, xyz: [0.035694706, 0.044190490, 0.021221498]}
+    - {code: 48, xyz: [0.044391381, 0.073468307, 0.023739421]}
+    - {code: 64, xyz: [0.056045939, 0.116751704, 0.027224403]}
+    - {code: 96, xyz: [0.072265346, 0.178531635, 0.032318681]}
+    - {code: 128, xyz: [0.108846478, 0.312883054, 0.043404867]}
+    - {code: 192, xyz: [0.217390501, 0.700721466, 0.080042444]}
+    - {code: 256, xyz: [0.379671157, 1.319377747, 0.127191765]}
+    - {code: 384, xyz: [0.948815717, 3.429953383, 0.302511885]}
+    - {code: 512, xyz: [1.833501311, 6.682167630, 0.574494796]}
+    - {code: 768, xyz: [3.875271061, 14.587426879, 1.270022451]}
+    - {code: 1024, xyz: [7.145926026, 27.113968023, 2.360001161]}
+    - {code: 1536, xyz: [17.741424895, 67.739731118, 5.917715941]}
+    - {code: 2048, xyz: [34.397578291, 131.588408362, 11.484156804]}
+    - {code: 3072, xyz: [88.442022942, 338.552901695, 29.562510938]}
+    - {code: 4095, xyz: [173.417993734, 664.017246976, 58.127463714]}
+  blue:
+    - {code: 16, xyz: [0.032179161, 0.028633518, 0.022542772]}
+    - {code: 24, xyz: [0.032978978, 0.028830370, 0.028665568]}
+    - {code: 32, xyz: [0.040678679, 0.034984011, 0.047569104]}
+    - {code: 48, xyz: [0.042048373, 0.032942339, 0.086340780]}
+    - {code: 64, xyz: [0.052374345, 0.037556317, 0.149918993]}
+    - {code: 96, xyz: [0.071177899, 0.045619188, 0.263468018]}
+    - {code: 128, xyz: [0.106753660, 0.060921414, 0.481112487]}
+    - {code: 192, xyz: [0.210513890, 0.106334872, 1.112390201]}
+    - {code: 256, xyz: [0.379763820, 0.180035484, 2.142352953]}
+    - {code: 384, xyz: [0.943319815, 0.426489556, 5.586184736]}
+    - {code: 512, xyz: [1.830602135, 0.812226498, 10.983322830]}
+    - {code: 768, xyz: [4.097042935, 1.775886262, 24.776293001]}
+    - {code: 1024, xyz: [7.625431629, 3.272160180, 46.189045196]}
+    - {code: 1536, xyz: [19.325873871, 8.206137111, 116.846811794]}
+    - {code: 2048, xyz: [37.401085033, 15.881497819, 226.988323979]}
+    - {code: 3072, xyz: [96.137050781, 40.783053282, 583.678583981]}
+    - {code: 4095, xyz: [188.872441166, 80.020892713, 1147.008210262]}
+
+# Gray tracking ramp (r=g=b), same codes as the channel ramps.
+gray_response:
+  - {code: 16, xyz: [0.034550970, 0.031652657, 0.023375589]}
+  - {code: 24, xyz: [0.048172063, 0.045904308, 0.037754402]}
+  - {code: 32, xyz: [0.054990414, 0.054633063, 0.049463737]}
+  - {code: 48, xyz: [0.102809606, 0.107522713, 0.108000133]}
+  - {code: 64, xyz: [0.161336801, 0.173988991, 0.182891224]}
+  - {code: 96, xyz: [0.259872302, 0.274048676, 0.300769780]}
+  - {code: 128, xyz: [0.461225643, 0.488108590, 0.544310366]}
+  - {code: 192, xyz: [1.062132175, 1.117662053, 1.268796366]}
+  - {code: 256, xyz: [2.009543657, 2.113941251, 2.413467681]}
+  - {code: 384, xyz: [5.300293856, 5.591037975, 6.409910700]}
+  - {code: 512, xyz: [10.127365946, 10.656207035, 12.341081466]}
+  - {code: 768, xyz: [22.463618392, 23.154962557, 26.770805657]}
+  - {code: 1024, xyz: [41.717053005, 42.672682881, 49.385465457]}
+  - {code: 1536, xyz: [104.240109153, 105.968438691, 122.348717499]}
+  - {code: 2048, xyz: [202.147269170, 205.125234791, 236.805252811]}
+  - {code: 3072, xyz: [519.263924647, 526.825460733, 609.066310216]}
+  - {code: 4095, xyz: [1022.496405037, 1037.880329962, 1204.965559861]}
+
+# Full-drive two-channel sums for additivity analysis, absolute XYZ.
+additivity:
+  yellow: [833.991802477, 957.713599737, 58.696059779]
+  cyan: [362.750707308, 744.990772949, 1206.234407500]
+  magenta: [849.870107933, 374.433776547, 1147.536817311]

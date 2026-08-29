@@ -208,9 +208,36 @@ def _describe_gamut(
     )
 
 
+# Processor features that adapt to surrounding frames. These break the
+# memoryless code-to-light assumption a characterization rests on, so
+# the config is valid only while they are off. Static per-pixel
+# processing (Brompton's dark-magic, puretone, extended-bit-depth) is
+# part of the display's transfer function and is measured, not excluded
+# — see the signal_contract.processing block in the show manifest.
+CONTENT_DEPENDENT_FEATURES = ("overdrive",)
+
+
+def _processing_disabled(contract: dict) -> Optional[bool]:
+    """Whether no content-dependent processing is declared enabled.
+
+    Reads the per-feature `signal_contract.processing` block. Falls back
+    to the superseded `processing_disabled` boolean so manifests written
+    before the split still load.
+    """
+    processing = contract.get("processing")
+    if isinstance(processing, dict):
+        return not any(
+            bool(processing.get(feature)) for feature in CONTENT_DEPENDENT_FEATURES
+        )
+    return contract.get("processing_disabled")
+
+
 def describe_processing_state(disabled: Optional[bool]) -> str:
-    """Processor color-processing / dynamic-features state for metadata
-    and console output (§spec:signal-contract)."""
+    """Processor content-dependent-processing state for metadata and
+    console output (§spec:signal-contract).
+
+    Static per-pixel processing may be on and is measured; what this
+    reports is whether anything in the path adapts to the content."""
     if disabled is None:
         return "(not recorded)"
     return "disabled" if disabled else "NOT disabled"
@@ -1065,7 +1092,7 @@ def create_characterization(
     # fails in strict mode) when absent.
     intensity = contract.get("intensity")
     char.processor_intensity = None if intensity is None else str(intensity)
-    char.processor_processing_disabled = contract.get("processing_disabled")
+    char.processor_processing_disabled = _processing_disabled(contract)
 
     # White point policy is a generation decision, not a measurement, so
     # it lives under ocio:. Validated at matrix-build time.
@@ -1172,7 +1199,7 @@ def validate_manifest_data(
         contract = manifest.get("signal_contract", {})
         for field, meaning in (
             ("intensity", "locked processor intensity"),
-            ("processing_disabled", "color processing / dynamic features state"),
+            ("processing", "per-feature processor processing state"),
         ):
             if field in contract:
                 print(f"✓ Processor {field} recorded: {contract[field]}")
