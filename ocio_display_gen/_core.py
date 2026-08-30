@@ -809,6 +809,14 @@ class Provenance(NamedTuple):
     show_manifest_sha256: str
     measurements_file: str
     measurements_sha256: str
+    # The link the display was measured over, as the artifact states it.
+    # A config describes the display *as driven*, and the same display
+    # measured over a 10-bit narrow YCbCr link and over a 12-bit full
+    # RGB one is not the same measurement -- a matrix or range the
+    # processor reads differently moves the primaries by percent, not
+    # by rounding. None for a `measurements/1` artifact, which predates
+    # the block and cannot say.
+    measurements_wire: Optional[str] = None
 
 
 class PromotionPointer(NamedTuple):
@@ -883,8 +891,21 @@ def provenance_description(provenance: Provenance) -> str:
         f"({provenance.show_manifest_file})\n"
         f"Provenance: measurements sha256={provenance.measurements_sha256} "
         f"({provenance.measurements_file})\n"
+        f"{_wire_line(provenance)}"
         f"Provenance: generator ociodisplaygen {GENERATOR_VERSION}"
     )
+
+
+def _wire_line(provenance: Provenance) -> str:
+    """The measured link, when the artifact states one.
+
+    Greppable and on its own line, because the question it answers --
+    "is this config valid for the link my show delivers over?" -- is
+    asked of a config file long after the session that produced it.
+    """
+    if not provenance.measurements_wire:
+        return ""
+    return f"Provenance: measured-over {provenance.measurements_wire}\n"
 
 
 def record_provenance(
@@ -1000,6 +1021,28 @@ def resolve_measurements_pointer(
     )
 
 
+def describe_wire(measurements: Dict[str, Any]) -> Optional[str]:
+    """The artifact's wire encoding, as one greppable phrase.
+
+    Reads what display-measure wrote rather than deriving anything: the
+    link is the session's declaration, held against the processor where
+    the processor could answer and measured by the range probe where it
+    could not.
+    """
+    block = measurements.get("wire_encoding")
+    if not isinstance(block, dict):
+        return None
+    layout = str(block.get("layout", "?"))
+    depth = block.get("bit_depth", "?")
+    sampling = str(block.get("sampling", "?"))
+    levels = str(block.get("levels", "?"))
+    if sampling == "rgb":
+        return f"{layout} {depth}-bit RGB {levels}"
+    matrix = str(block.get("matrix", "?"))
+    subsampling = str(block.get("subsampling", "?"))
+    return f"{layout} {depth}-bit {matrix} {subsampling} {levels}"
+
+
 def load_inputs(
     manifest_path: str,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Provenance]:
@@ -1029,6 +1072,7 @@ def load_inputs(
         show_manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
         measurements_file=pointer.file,
         measurements_sha256=measurements_sha256,
+        measurements_wire=describe_wire(measurements),
     )
     return manifest, measurements, provenance
 

@@ -189,3 +189,72 @@ def test_consecutive_generations_are_byte_identical(tmp_path: Path) -> None:
     first = generate_config_text(manifest_path)
     second = generate_config_text(manifest_path)
     assert first == second
+
+
+# --- the link the display was measured over (§spec:provenance) ------------
+
+
+def test_the_wire_is_described_from_the_artifact() -> None:
+    """A YCbCr link reads as its matrix and subsampling, not just a name."""
+    from ocio_display_gen._core import describe_wire
+
+    assert (
+        describe_wire(
+            {
+                "wire_encoding": {
+                    "layout": "v210",
+                    "bit_depth": 10,
+                    "sampling": "ycbcr",
+                    "subsampling": "422",
+                    "levels": "narrow",
+                    "matrix": "bt2020",
+                }
+            }
+        )
+        == "v210 10-bit bt2020 422 narrow"
+    )
+    assert (
+        describe_wire(
+            {
+                "wire_encoding": {
+                    "layout": "r12b",
+                    "bit_depth": 12,
+                    "sampling": "rgb",
+                    "subsampling": "444",
+                    "levels": "full",
+                    "matrix": "identity",
+                }
+            }
+        )
+        == "r12b 12-bit RGB full"
+    )
+
+
+def test_an_artifact_without_a_wire_block_describes_no_link() -> None:
+    """`measurements/1` predates the block; silence beats a guess."""
+    from ocio_display_gen._core import describe_wire
+
+    assert describe_wire({}) is None
+    assert describe_wire({"wire_encoding": "v210"}) is None
+
+
+def test_the_measured_link_is_recorded_in_the_config_description() -> None:
+    """The question a config is asked long after the session that made it
+    is whether it is valid for the link the show delivers over."""
+    from ocio_display_gen._core import Provenance, provenance_description
+
+    over_sdi = Provenance(
+        show_manifest_file="show.yaml",
+        show_manifest_sha256="a" * 64,
+        measurements_file="m.yaml",
+        measurements_sha256="b" * 64,
+        measurements_wire="v210 10-bit bt2020 422 narrow",
+    )
+    text = provenance_description(over_sdi)
+    assert "Provenance: measured-over v210 10-bit bt2020 422 narrow" in text
+    assert text.count("\n") == 3
+
+    silent = over_sdi._replace(measurements_wire=None)
+    quiet = provenance_description(silent)
+    assert "measured-over" not in quiet
+    assert quiet.count("\n") == 2
