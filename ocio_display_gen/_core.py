@@ -1099,6 +1099,13 @@ def create_characterization(
 
     char = DisplayCharacterization(f"{panel_name} + {processor_name}")
 
+    # Refuse an artifact missing what a config reads, before anything is
+    # built from it. The requirement is stated in `requires`, against the
+    # measurement blocks an artifact records (§spec:characterization-model).
+    from ocio_display_gen.requires import check as check_blocks
+
+    check_blocks(measurements)
+
     # Measured colorimetry from the artifact
     colorimetry = measurements["colorimetry"]
     primaries = colorimetry["primaries"]
