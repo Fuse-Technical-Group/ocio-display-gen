@@ -263,6 +263,49 @@ role, and stamping fixed primaries would silently bind the artifact
 to one base-config family — the `sceneReference` name is the
 authoritative statement of interpretation.
 
+## The renderable floor §spec:renderable-floor
+
+*Status: not started*
+
+A generated config is anchored at the top and open at the bottom. The
+measured peak is a transform parameter — `ACES2_OutputTransform` and
+`ACES2_GamutCompress` both take it — while the measured black reaches
+only a description string. OCIO therefore renders as though the display
+goes to zero, and content below the floor is mapped to values the
+display cannot produce.
+
+**The floor is a property of the display and its room together, so it
+is measured, not assumed.** On the bench panel it moves by more than
+three orders of magnitude between conditions: 0.000222 cd/m² read by a
+colorimeter in the dark, 0.0161 read by a spectroradiometer in the same
+room — mostly that instrument's own floor — and 1.0104 with the lights
+on. In scene-linear terms, against a 300 cd/m² anchor, that is 7.4e-07
+against 3.4e-03: a four-thousandfold difference in where the shadows
+stop. No single number is the display's floor; the artifact says which
+room and which instrument produced the one it carries.
+
+**A config records the floor and the conditions that produced it.** The
+number alone invites the reading that a display *has* a black level,
+which is what led to a config quoting 1473:1 contrast for a panel that
+measures nearer 6,700,000:1 in the dark. What differs is the room, and a
+consumer that cannot see which room was measured cannot tell a dark
+venue's config from a lit one's.
+
+**A floor below what anything renders is not worth carrying.** Human
+viewers and cinematic cameras stop resolving somewhere near 0.005 cd/m²
+— the PQ design floor, a seventeen-stop camera under a show peak, an eye
+adapted in a viewing room all land in that decade. A measured floor an
+order of magnitude below that is already past every consumer, and a
+config that distinguishes 1e-06 from 1e-07 is describing arithmetic
+rather than anything a viewer or a sensor will meet.
+
+**Open: how the floor enters the transform.** Whether it belongs as a
+lift on the display colorspace, a parameter to the tone mapping, or
+metadata a downstream tool applies is an OCIO semantics question this
+spec does not answer yet. What it fixes is that the config shall carry
+the floor and the conditions behind it, rather than describing them in
+prose beside a transform that ignores them.
+
 ## Artifact provenance §spec:provenance
 
 *Status: complete*

@@ -59,3 +59,16 @@ eotf-variants bug are already removed. §spec:config-structure.
 **Verify:** `grep` finds no references to gamut-mapping strategies that
 do not exist in generated output; tests and lint pass; README quick
 start reproduces a working config verbatim.
+
+### Carry the renderable floor into the config §road:renderable-floor
+
+Record the measured black level and the conditions that produced it in
+the generated config, and decide how it enters the transform, in
+`ocio_display_gen/_core.py` and the config's display colorspace.
+§spec:renderable-floor.
+
+**Verify:** a config generated from an artifact measured in a lit room
+differs from one measured in the dark by more than a description
+string; the floor and the instrument and ambient behind it are readable
+from the config; and a floor below what any viewer or sensor resolves is
+recorded as such rather than propagated as a distinction.
