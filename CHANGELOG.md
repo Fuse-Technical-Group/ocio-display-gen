@@ -1,3 +1,10 @@
+# [0.7.0](https://github.com/Fuse-Technical-Group/ocio-display-gen/compare/v0.6.0...v0.7.0) (2026-09-01)
+
+
+### Features
+
+* **requires:** state the measurement blocks a config reads ([b2a3ecb](https://github.com/Fuse-Technical-Group/ocio-display-gen/commit/b2a3ecbb88e064114006b5d0ca1acaa6ce4611e1))
+
 # [0.6.0](https://github.com/Fuse-Technical-Group/ocio-display-gen/compare/v0.5.0...v0.6.0) (2026-08-30)
 
 
