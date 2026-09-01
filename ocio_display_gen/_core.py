@@ -856,11 +856,14 @@ def file_sha256(path: str, role: str) -> str:
 
 
 def enforce_promotion_hash(
-    pointer: PromotionPointer, artifact_bytes: bytes, manifest_path: str
+    pointer: PromotionPointer, actual: str, manifest_path: str
 ) -> str:
     """
-    Enforce the promotion pointer's recorded hash over the artifact
-    bytes (§spec:provenance). The comparison uses hmac.compare_digest
+    Enforce the promotion pointer's recorded hash against `actual`
+    (§spec:provenance). What the digest covers is the artifact format's
+    business — a YAML artifact's own bytes, a seam file's canonical
+    projection — so this compares digests and does not compute one. The
+    comparison uses hmac.compare_digest
     as a cheap constant-time habit; the threat model is error and
     drift, not adversaries.
 
@@ -871,7 +874,6 @@ def enforce_promotion_hash(
         ValueError: On mismatch — the artifact is not the measurement
             of record and generation must refuse.
     """
-    actual = hashlib.sha256(artifact_bytes).hexdigest()
     if not hmac.compare_digest(actual, pointer.sha256):
         raise ValueError(
             f"Measurements artifact '{pointer.file}' does not match the "
@@ -950,6 +952,111 @@ def parse_yaml_mapping(data: bytes, path: str, role: str) -> Dict[str, Any]:
     if not isinstance(parsed, dict):
         raise ValueError(f"{role} '{path}' must be a YAML mapping")
     return cast(Dict[str, Any], parsed)
+
+
+# The measurement of record is CSMF (§spec:provenance). display-measure
+# writes the spectra and tristimulus as protobuf, with everything that
+# format does not model — contract, panel state, protocol blocks,
+# colorimetry, luminance — in a provenance block its reserved ancillary
+# field carries.
+SEAM_SUFFIX = ".csmf"
+
+# What separates the provenance envelope from the projection it covers,
+# inside the ancillary field.
+PROJECTION_MARKER = "---"
+
+
+def measurements_digest(data: bytes, path: str, role: str) -> Tuple[str, bytes]:
+    """The digest a promotion pointer records, and the text it covers.
+
+    Digest before parse, so a tampered artifact is reported as tampering
+    rather than as whatever the tampering happened to break.
+
+    Two artifact formats, hashed differently on purpose. A YAML
+    artifact's bytes are its content, so the pointer records a digest
+    over those bytes. CSMF is protobuf, which guarantees round-trip but
+    not canonical encoding — a digest over raw bytes would rotate on a
+    dependency upgrade, and a promotion would go stale without the
+    measurement having changed. A seam file therefore carries its own
+    digest over a canonical rendering of its values, and that is what a
+    pointer records (§spec:provenance).
+
+    Raises:
+        ValueError: For an unreadable artifact of either format, or a
+            seam file whose projection does not match its own digest.
+    """
+    if not path.endswith(SEAM_SUFFIX):
+        return hashlib.sha256(data).hexdigest(), data
+
+    recorded, projection = read_seam_provenance(path, role)
+    # A seam file reports its own digest, so trusting that report would
+    # let a file that was edited along with its envelope pass. It is
+    # self-verifying instead: recompute over the projection and refuse a
+    # file that disagrees with itself, before the pointer is consulted.
+    actual = hashlib.sha256(projection.encode("utf-8")).hexdigest()
+    if not hmac.compare_digest(actual, recorded):
+        raise ValueError(
+            f"{role} '{path}' does not verify against itself: its "
+            f"provenance block records {recorded} and its projection "
+            f"digests to {actual} (§spec:provenance)"
+        )
+    return recorded, projection.encode("utf-8")
+
+
+def parse_measurements_artifact(
+    data: bytes, path: str, role: str
+) -> Tuple[Dict[str, Any], str]:
+    """The measurements mapping and its digest, for a caller with no pointer."""
+    digest, text = measurements_digest(data, path, role)
+    return parse_yaml_mapping(text, path, role), digest
+
+
+def read_seam_provenance(path: str, role: str) -> Tuple[str, str]:
+    """The digest a seam file records, and the projection it covers.
+
+    Deferred import: colour-specio drags colour and scipy behind it, and
+    a caller reading a YAML artifact should not pay for a format it is
+    not using.
+    """
+    try:
+        from specio.serialization.csmf import load_csmf_file
+    except ImportError as e:
+        raise ValueError(
+            f"{role} '{path}' is a CSMF seam file, and the library that "
+            "reads one is not installed. Install this package's 'csmf' "
+            "extra (it needs Python 3.13, which is why it is optional)."
+        ) from e
+
+    # By path, not from the bytes already read: colour-specio's surface
+    # loads a file. The bytes were read to prove the artifact is
+    # readable at all, which is still worth having done.
+    try:
+        loaded = load_csmf_file(path)
+    except Exception as e:
+        raise ValueError(f"{role} '{path}' is not a readable CSMF file: {e}") from e
+
+    ancillary = getattr(loaded, "ancillary", None)
+    if not ancillary:
+        raise ValueError(
+            f"{role} '{path}' carries no provenance block — a seam file "
+            "records its contract, protocol and colorimetry in CSMF's "
+            "ancillary field, and one without it is not the measurement "
+            "of record (§spec:provenance)"
+        )
+
+    text = ancillary.decode("utf-8") if isinstance(ancillary, bytes) else str(ancillary)
+    marker = f"\n{PROJECTION_MARKER}\n"
+    envelope, separator, projection = text.partition(marker)
+    if not separator:
+        raise ValueError(
+            f"{role} '{path}' has a provenance block with no "
+            f"{PROJECTION_MARKER!r} marker separating the envelope from "
+            "the projection it covers"
+        )
+    for line in envelope.splitlines():
+        if line.startswith("projection_sha256:"):
+            return line.split('"')[1], projection
+    raise ValueError(f"{role} '{path}' provenance block records no projection_sha256")
 
 
 def resolve_measurements_pointer(
@@ -1063,9 +1170,14 @@ def load_inputs(
     manifest = parse_yaml_mapping(manifest_bytes, manifest_path, "Show manifest")
     pointer = resolve_measurements_pointer(manifest, manifest_path)
     artifact_bytes = read_file_bytes(pointer.artifact_path, "Measurements artifact")
-    measurements_sha256 = enforce_promotion_hash(pointer, artifact_bytes, manifest_path)
-    measurements = parse_yaml_mapping(
+    artifact_digest, artifact_text = measurements_digest(
         artifact_bytes, pointer.artifact_path, "Measurements artifact"
+    )
+    measurements_sha256 = enforce_promotion_hash(
+        pointer, artifact_digest, manifest_path
+    )
+    measurements = parse_yaml_mapping(
+        artifact_text, pointer.artifact_path, "Measurements artifact"
     )
     provenance = Provenance(
         show_manifest_file=manifest_path,
