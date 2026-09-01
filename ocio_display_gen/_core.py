@@ -17,8 +17,9 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple, cast
 import colour
 import numpy as np
 import numpy.typing as npt
-import PyOpenColorIO as OCIO
 import yaml  # type: ignore[import]
+
+import PyOpenColorIO as OCIO
 
 
 def derive_reference_spaces(ocio_config: "OCIO.Config") -> Tuple[str, str]:
@@ -1098,6 +1099,13 @@ def create_characterization(
     )
 
     char = DisplayCharacterization(f"{panel_name} + {processor_name}")
+
+    # Refuse an artifact missing what a config reads, before anything is
+    # built from it. The requirement is stated in `requires`, against the
+    # measurement blocks an artifact records (§spec:characterization-model).
+    from ocio_display_gen.requires import check as check_blocks
+
+    check_blocks(measurements)
 
     # Measured colorimetry from the artifact
     colorimetry = measurements["colorimetry"]
