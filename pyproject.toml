@@ -23,6 +23,17 @@ dependencies = [
 ocio-display-gen = "ocio_display_gen.cli:main"
 
 [project.optional-dependencies]
+# Reading the measurement of record when it is CSMF. Optional rather
+# than required because colour-specio supports only Python 3.13, and
+# this package supports 3.11 up — a YAML artifact needs none of it, and
+# a caller that hands us a seam file without the extra is told which
+# extra to install rather than left with an ImportError.
+csmf = [
+    # Marked, not just optional: uv resolves an extra across the whole
+    # requires-python range, so an unmarked pin would fail resolution
+    # for 3.11 and 3.12 even when nobody asked for the extra.
+    "colour-specio>=0.4.2a0; python_version >= '3.13' and python_version < '3.14'",
+]
 dev = [
     "mypy>=1.8.0",
     # Test-only independent EXR reader: the hand-rolled probe writer's
@@ -50,3 +61,13 @@ ignore = ["E203"]  # Ignore whitespace before ':'
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.uv.sources]
+# The released colour-specio cannot reach CSMF's reserved `ancillary`
+# field from Python, and that field is where a seam file keeps
+# everything the protobuf schema does not model — the contract, the
+# protocol blocks, the colorimetry this package reads. display-measure
+# carries the same pin for the same gap. Commit, not a branch: a branch
+# head moves. Reverts to the released pin once the upstream PR merges
+# (§road:specio-pin-revert in display-measure).
+colour-specio = { git = "https://github.com/repentsinner/colour-specio", rev = "981d48627c7b2a02e14897500fa1a67da8f61c8a" }
