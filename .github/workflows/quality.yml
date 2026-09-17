@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Root governance and landing documents. The four legacy design
       # documents are ignored rather than fixed — see
-      # .markdownlint-cli2.jsonc. Config is .markdownlint.json plus that
+      # .markdownlint-cli2.jsonc, which holds both the rule config and that
       # ignore list.
       - uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24
         with:
