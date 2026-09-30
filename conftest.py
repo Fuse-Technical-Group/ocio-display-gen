@@ -40,6 +40,32 @@ WALL_WHITEPOINT = (0.3127, 0.3290)
 PEAK_LUMINANCE = 1000.0
 GAMMA = 2.4
 
+# The half-octave code ladder a characterize session drives per channel,
+# as fractions of full drive at the link's 12 bits.
+FULL_CODE = 4095
+LADDER_CODES = (
+    16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048,
+    3072, 4095,
+)  # fmt: skip
+
+
+def response_from(
+    law: Any, codes: tuple[int, ...] = LADDER_CODES
+) -> dict[str, tuple[tuple[float, float], ...]]:
+    """A per-channel measured response following `law` (code fraction →
+    luminance relative to full drive), the same on every channel."""
+    rungs = tuple((c / FULL_CODE, float(law(c / FULL_CODE))) for c in codes)
+    return {channel: rungs for channel in ("red", "green", "blue")}
+
+
+def ideal_response(
+    gamma: float = GAMMA,
+) -> dict[str, tuple[tuple[float, float], ...]]:
+    """A measured response that is exactly the declared gamma: the
+    correction curve built from it is the identity."""
+    return response_from(lambda c: c**gamma)
+
+
 # Values derived from the shipped inputs, for tests that exercise the
 # shipped samples: replacing the artifact of record cannot
 # desynchronize these.
@@ -70,6 +96,7 @@ def make_characterization(
     char.peak_luminance = PEAK_LUMINANCE
     char.eotf_type = eotf_type
     char.gamma_value = GAMMA
+    char.channel_response = ideal_response()
     char.white_point_policy = white_point_policy
     char.processor_intensity = intensity
     char.processor_processing_disabled = processing_disabled

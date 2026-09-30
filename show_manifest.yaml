@@ -35,7 +35,10 @@ signal_contract:
                        # configured gamma exponent (its default),
                        # confirmed via the Tessera API.
   intensity: "1800 nits"     # Locked intensity/brightness as configured
-                             # on the processor (percent or nits)
+                             # on the processor (percent or nits). On a
+                             # bank without a Dynamic Calibration this is
+                             # a drive level: this panel peaks at 1944
+                             # cd/m² with the S8 set to 1800.
 
   # OPERATOR ATTESTATION — read these off the panel OSD, not the software.
   # Nothing here is readable from the Tessera HTTP API, and every one of
@@ -65,15 +68,15 @@ signal_contract:
   #
   # Static per-pixel transfer — the same code produces the same light
   # every frame. This IS the display, and a characterization measures
-  # it. Left on deliberately: Dark Magic buys back the effective bit
-  # depth the panel loses at low drive, and PureTone corrects the LED
-  # and driver non-linearity that otherwise casts the shadows
-  # off-neutral as each primary runs out of PWM resolution. Both fix
-  # constraints below the layer any OCIO config can reach, and both are
-  # on in show — so they are on when we measure.
+  # it. Dark Magic is on deliberately: it buys back the effective bit
+  # depth the panel loses at low drive, below the layer any OCIO config
+  # can reach. PureTone is off because this panel cannot run it: the
+  # receiver card refuses PureTone outside a DynaCal-enabled calibration
+  # bank, and the BP2 (NS) has none. The config's measured response
+  # carries the non-linearity PureTone would otherwise correct.
   processing:
     dark-magic: true
-    puretone: true
+    puretone: false
     extended-bit-depth: true
 
     # Frame-adaptive: adapts to surrounding frames, so one code stops
@@ -86,8 +89,8 @@ signal_contract:
 # the sha256 hex digest of the artifact's bytes. Recording the hash is
 # the human act of acceptance — a signature, not an edit.
 measurements:
-  file: "measurements/ftg_bench_20260829.yaml"
-  sha256: "38dbbcef55cd51fa0ebe81df4d1633187f58a53c9c30f03c34b58d2656c62ee9"
+  file: "measurements/roe-bp2-ns_brompton-s8_20260930_ca410.yaml"
+  sha256: "f7bf3d11e2ae4c9748f3afb79b7bf870e32c85fbf43fbd2b0be3cec3c53e2c54"
 
 # OCIO CONFIGURATION
 ocio:

@@ -143,6 +143,10 @@ class DisplayCharacterization:
         self.contrast_ratio = 1000.0  # Measured contrast ratio
         self.eotf_type = "PQ"  # Display EOTF type: "PQ", "HLG", "GAMMA"
         self.gamma_value = 2.4  # For gamma-based EOTF (display property)
+        # Measured per-channel response: for each of red, green and blue,
+        # (code, luminance) rungs as fractions of full drive, rising. A
+        # gamma display encodes through this, not through gamma_value.
+        self.channel_response: Dict[str, Tuple[Tuple[float, float], ...]] = {}
         self.white_point_policy = "adapted"  # "adapted" or "absolute"
         # Processor state the config is valid for (§spec:signal-contract):
         # locked intensity (free-form: percent or nits as configured) and
@@ -305,6 +309,152 @@ def create_display_xyz_to_native_matrix(
     return matrix_4x4
 
 
+CHANNELS = ("red", "green", "blue")
+
+
+def measured_channel_response(
+    measurements: Dict[str, Any],
+) -> Dict[str, Tuple[Tuple[float, float], ...]]:
+    """
+    Read the artifact's per-channel response as (code, luminance) rungs,
+    each a fraction of that channel's full drive.
+
+    A rung the display cannot have produced stops the read: a ramp that
+    falls, or one without light, is the instrument's floor or noise, and
+    a curve drawn through it would invert the shadows.
+
+    Raises:
+        ValueError: For a missing channel, a non-positive luminance, or a
+            ramp that fails to rise.
+    """
+    ramps = measurements.get("per_channel_response")
+    if not isinstance(ramps, dict):
+        raise ValueError("Measurements carry no per_channel_response")
+    response: Dict[str, Tuple[Tuple[float, float], ...]] = {}
+    for channel in CHANNELS:
+        ramp = ramps.get(channel)
+        if not ramp:
+            raise ValueError(f"Measurements carry no {channel} response")
+        rungs = sorted((int(p["code"]), float(p["xyz"][1])) for p in ramp)
+        dark = [code for code, luminance in rungs if luminance <= 0.0]
+        if dark:
+            raise ValueError(
+                f"The {channel} response reads no light at code "
+                f"{', '.join(map(str, dark))}; a measured response is "
+                "positive wherever it was read"
+            )
+        falls = [
+            f"{low[0]} to {high[0]}"
+            for low, high in zip(rungs, rungs[1:])
+            if high[1] <= low[1]
+        ]
+        if falls:
+            raise ValueError(
+                f"The {channel} response fails to rise from code "
+                f"{', '.join(falls)}: those rungs read the instrument, not "
+                "the display"
+            )
+        full_code, full_luminance = rungs[-1]
+        response[channel] = tuple(
+            (code / full_code, luminance / full_luminance) for code, luminance in rungs
+        )
+    return response
+
+
+def _linear_toe_offset(gamma: float, toe_linear: float) -> float:
+    """
+    The ExponentWithLinearTransform offset whose linear segment ends at
+    `toe_linear`. The transform's break sits at encoded o/(g-1), where
+    linear is (o*g / ((g-1)*(1+o)))**g; solving that for o gives this.
+    """
+    r = toe_linear ** (1.0 / gamma)
+    return r / (gamma / (gamma - 1.0) - r)
+
+
+def _correction_curve(
+    shaper: OCIO.ExponentWithLinearTransform,
+    rungs: Dict[str, Tuple[Tuple[float, float], ...]],
+) -> OCIO.GradingRGBCurveTransform:
+    """The per-channel curve from shaped linear to measured code."""
+    shape = OCIO.Config.CreateRaw().getProcessor(shaper).getDefaultCPUProcessor()
+    curves = []
+    for channel in CHANNELS:
+        first_code, first_linear = rungs[channel][0]
+        first_shaped = shape.applyRGB([first_linear] * 3)[0]
+        # Zero, then the toe's midpoint, then every rung: collinear
+        # through the toe, so the curve stays straight below the lowest
+        # rung, where nothing was measured.
+        points = [0.0, 0.0, first_shaped / 2.0, first_code / 2.0]
+        for code, linear in rungs[channel]:
+            points += [shape.applyRGB([linear] * 3)[0], code]
+        curves.append(OCIO.GradingBSplineCurve(points))
+    values = OCIO.GradingRGBCurve()
+    values.red, values.green, values.blue = curves
+    return OCIO.GradingRGBCurveTransform(style=OCIO.GRADING_VIDEO, values=values)
+
+
+def _thinned(
+    rungs: Tuple[Tuple[float, float], ...], count: int
+) -> Tuple[Tuple[float, float], ...]:
+    """`count` rungs spread evenly through the ramp, both ends kept."""
+    keep = sorted({int(round(i)) for i in np.linspace(0, len(rungs) - 1, count)})
+    return tuple(rungs[i] for i in keep)
+
+
+def measured_inverse_eotf(
+    characterization: DisplayCharacterization,
+) -> OCIO.GroupTransform:
+    """
+    Linear drive (1.0 = full) → encoded code value, through the measured
+    per-channel response rather than the declared exponent.
+
+    Two stages. A shaper, the declared gamma with a linear toe that ends
+    at the lowest measured rung, spreads the curve's input evenly and
+    gives the encode a finite slope at black. A per-channel curve then
+    maps each shaped rung to the code that measured it: exact at the
+    rungs, a smooth monotone curve between them, and the identity for a
+    display that matches its declared gamma. Both stages serialize
+    inline, so the config stays one self-contained file.
+
+    OCIO bounds how many points an inline curve holds. A response denser
+    than that keeps an even subset of its rungs, both ends included.
+
+    Raises:
+        ValueError: For a characterization with no measured response.
+    """
+    response = characterization.channel_response
+    if not response:
+        raise ValueError(
+            f"'{characterization.name}' has no measured per-channel "
+            "response; a gamma display encodes through its measured "
+            "response, not the declared exponent"
+        )
+    gamma = characterization.gamma_value
+    toe = min(response[channel][0][1] for channel in CHANNELS)
+    offset = _linear_toe_offset(gamma, toe)
+    shaper = OCIO.ExponentWithLinearTransform(
+        gamma=[gamma] * 3 + [1.0],
+        offset=[offset] * 3 + [0.0],
+        direction=OCIO.TRANSFORM_DIR_INVERSE,
+    )
+
+    count = max(len(rungs) for rungs in response.values())
+    while True:
+        rungs = {channel: _thinned(response[channel], count) for channel in CHANNELS}
+        try:
+            # OCIO enforces its point budget both when the curve is built
+            # and when a processor is: either refusal means fewer points.
+            group = OCIO.GroupTransform()
+            group.appendTransform(shaper)
+            group.appendTransform(_correction_curve(shaper, rungs))
+            OCIO.Config.CreateRaw().getProcessor(group)
+            return group
+        except OCIO.Exception as e:
+            if "control points" not in str(e) or count <= 2:
+                raise
+            count -= 1
+
+
 def create_display_colorspace_from_characterization(
     characterization: DisplayCharacterization,
     chromatic_adaptation_transform: str = "CAT02",
@@ -315,10 +465,11 @@ def create_display_colorspace_from_characterization(
     The colorspace is display-referred: its from_display_reference
     transform maps CIE XYZ (D65-adapted, 1.0 = 100 cd/m²) to the wall's
     encoded native RGB. Pipeline: XYZ→native matrix (white point policy
-    applied), absolute luminance scale, hard clip, inverse processor
-    EOTF. It holds only measured colorimetry — exact within gamut,
-    hard-clipped outside. The chosen policy is recorded in the
-    colorspace description.
+    applied), absolute luminance scale, hard clip, inverse EOTF — the
+    measured per-channel response for a gamma display
+    (`measured_inverse_eotf`), the PQ curve for PQ. It holds only
+    measured colorimetry — exact within gamut, hard-clipped outside. The
+    chosen policy is recorded in the colorspace description.
 
     Args:
         characterization: Measured display data, white point policy, and
@@ -329,7 +480,8 @@ def create_display_colorspace_from_characterization(
     Raises:
         NotImplementedError: For HLG (an inverse EOTF without OOTF
             handling would be silently wrong).
-        ValueError: For unknown EOTF types or white point policies.
+        ValueError: For unknown EOTF types or white point policies, or a
+            gamma display with no measured response.
     """
     eotf_type = characterization.eotf_type
     if eotf_type == "HLG":
@@ -342,6 +494,19 @@ def create_display_colorspace_from_characterization(
         raise ValueError(f"Unknown display EOTF type '{eotf_type}'")
 
     peak = characterization.peak_luminance
+
+    if eotf_type == "GAMMA":
+        inverse_eotf = measured_inverse_eotf(characterization)
+        rung_count = max(len(r) for r in characterization.channel_response.values())
+        lowest_code = min(r[0][0] for r in characterization.channel_response.values())
+        encode_note = (
+            f"inverse measured EOTF (the measured per-channel response, "
+            f"{rung_count} rungs, shaped by the declared gamma "
+            f"{characterization.gamma_value}; linear below the lowest rung "
+            f"at {lowest_code:.4f} of full drive, where nothing was measured)"
+        )
+    else:
+        encode_note = f"inverse {eotf_type} EOTF"
 
     white_point_policy = characterization.white_point_policy
     if white_point_policy == "absolute":
@@ -379,7 +544,7 @@ def create_display_colorspace_from_characterization(
         f"Black: {characterization.black_level} cd/m², "
         f"EOTF: {eotf_type}) "
         f"CIE-XYZ-D65 → native RGB matrix → luminance scale → "
-        f"hard clip → inverse {eotf_type} EOTF. "
+        f"hard clip → {encode_note}. "
         f"White point policy: {policy_note}. "
         f"{signal_contract}"
     )
@@ -419,15 +584,15 @@ def create_display_colorspace_from_characterization(
     range_transform.setMaxOutValue(clip_max)
     group.appendTransform(range_transform)
 
-    # Stage 4: inverse processor EOTF (linear → encoded).
+    # Stage 4: inverse EOTF (linear → encoded). A gamma display encodes
+    # through its measured response; the declared exponent only shapes
+    # the curve's input.
     if eotf_type == "PQ":
         pq_transform = OCIO.BuiltinTransform("CURVE - LINEAR_to_ST-2084")
         pq_transform.setDirection(OCIO.TRANSFORM_DIR_FORWARD)
         group.appendTransform(pq_transform)
     else:
-        gamma_transform = OCIO.ExponentTransform()
-        gamma_transform.setValue([1.0 / characterization.gamma_value] * 3 + [1.0])
-        group.appendTransform(gamma_transform)
+        group.appendTransform(inverse_eotf)
 
     cs.setTransform(group, OCIO.COLORSPACE_DIR_FROM_REFERENCE)
     return cs
@@ -1137,6 +1302,8 @@ def create_characterization(
     eotf = contract["eotf"]
     char.eotf_type = eotf["type"]
     char.gamma_value = eotf.get("gamma_value", 2.4)
+    if char.eotf_type == "GAMMA":
+        char.channel_response = measured_channel_response(measurements)
 
     # Processor lockdown state. Optional: validate_inputs warns (or
     # fails in strict mode) when absent.
