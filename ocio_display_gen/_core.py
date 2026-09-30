@@ -1664,7 +1664,7 @@ def validate_inputs(
 
 # Verification handoff (§spec:verification): probe patches, their
 # predicted on-wall colorimetry, and the artifact that carries both to
-# color-wrangler sessions and OLE-Toolset. Analysis of measurements
+# measurement sessions and OLE-Toolset. Analysis of measurements
 # against these predictions belongs to OLE-Toolset (§spec:non-goals);
 # this component only states what the wall should do.
 

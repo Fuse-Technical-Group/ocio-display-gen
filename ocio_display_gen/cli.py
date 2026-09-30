@@ -33,7 +33,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
             f"a show manifest (default '{SHOW_MANIFEST_FILE}') and the "
             f"measurements artifact it "
             f"promotes, plus the verification predictions and probe "
-            f"imagery a color-wrangler session measures against."
+            f"imagery a measurement session measures against."
         ),
     )
     parser.add_argument(

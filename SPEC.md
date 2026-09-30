@@ -1,9 +1,7 @@
 # ocio-display-gen — Specification
 
-Component spec for the **generate layer** of
-[color-wrangler](https://github.com/Fuse-Technical-Group/color-wrangler)
-— characterization-based color management for real-time playback on
-LED surfaces. The system problem, four-layer architecture, artifact
+Component spec for the **generate layer** of a characterization-based
+color management system for real-time playback on LED surfaces. The system problem, four-layer architecture, artifact
 contracts, measurement sessions, and verification policy live in the
 umbrella spec; sections here refine the generate layer only.
 Terminology (including "wall" as shorthand for any LED surface)
@@ -13,7 +11,7 @@ follows the umbrella.
 
 *Status: complete*
 
-Within the color-wrangler system, this component turns a show manifest
+Within the umbrella system, this component turns a show manifest
 and a promoted measurements artifact into a single self-contained OCIO
 config — the profile and rendering intents for one measured wall — and
 into the predictions file that verification measures against. It needs
@@ -264,8 +262,8 @@ id as stem in the probe directory beside the config:
   the renderer's output is judged against the same predictions. The
   input space is load-bearing: the file has to be interpreted as the
   config's scene reference, and a renderer that assumes another space
-  produces plausible but wrong output. The session half lives in the
-  umbrella roadmap (`§road:renderer-verification` there).
+  produces plausible but wrong output. The session half belongs to the
+  umbrella project.
 
 The PNG's no-image-library rationale does not transfer to the EXR:
 this artifact exists to be interpreted by the renderer, not to bypass

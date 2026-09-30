@@ -1,4 +1,4 @@
-"""Generation as a library call (§spec:session-ownership).
+"""Generation as a library call.
 
 `main()` did the work and the reporting in one pass: it read a module
 constant for the manifest, printed progress, and called `sys.exit` on
