@@ -285,8 +285,8 @@ def test_fractional_measured_peak_parameterizes_the_fixed_functions(
     """A measured peak is never integral; the ACES 2.0 fixed functions
     accept only integral peak_luminance, so parameterization rounds to
     the nearest nit while the radiometric anchor keeps the measured
-    value exactly (regression: color-wrangler walking-skeleton round
-    trip failed on peak 601.886)."""
+    value exactly (regression: a walking-skeleton round trip failed on
+    peak 601.886)."""
     from ocio_display_gen._core import _measured_wall_gamut
 
     char = make_characterization()

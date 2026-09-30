@@ -1,7 +1,7 @@
 # ocio-display-gen — Roadmap
 
-Component roadmap for the generate layer of
-[color-wrangler](https://github.com/Fuse-Technical-Group/color-wrangler).
+Component roadmap for the generate layer of a characterization-based
+color management system.
 Session and validation work live in the umbrella roadmap. The
 verification handoff and the measured encode have shipped
 (§spec:verification, §spec:characterization-model); what remains is

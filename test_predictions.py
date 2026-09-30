@@ -687,7 +687,7 @@ def test_probe_exr_through_default_view_reproduces_code_values(
 
 
 # ---------------------------------------------------------------------
-# CLI surface (§road:probe-patches integration point)
+# CLI surface
 # ---------------------------------------------------------------------
 
 
