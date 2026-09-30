@@ -3,23 +3,9 @@
 Component roadmap for the generate layer of
 [color-wrangler](https://github.com/Fuse-Technical-Group/color-wrangler).
 Session and validation work live in the umbrella roadmap. The
-verification handoff has shipped (§spec:verification); what remains is
-model refinement, then runtime back-compat, then documentation
-pruning.
-
-## Measured response §road:measured-response
-
-### Per-channel measured EOTF §road:measured-eotf-lut
-
-Accept measured per-channel response ramps in the measurements
-artifact and emit a fitted 1D LUT in place of the ideal EOTF curve,
-including near-black (BT.1886-style) handling for gamma displays.
-§spec:characterization-model.
-
-**Verify:** Provide a synthetic measured ramp deviating from pure gamma
-2.4; confirm the generated config reproduces the measured response
-within tolerance where an ideal-gamma config demonstrably does not,
-and that near-black output is finite-sloped.
+verification handoff and the measured encode have shipped
+(§spec:verification, §spec:characterization-model); what remains is
+runtime back-compat, then documentation pruning.
 
 ## Version tiers §road:version-tiers
 
