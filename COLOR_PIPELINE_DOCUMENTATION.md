@@ -102,20 +102,20 @@ Display Encoded RGB → [Display EOTF] → Display RGB Linear → [Physical Prim
 ```python
 def naive_gamut_map_preserve_luminance(rgb):
     # Calculate relative luminance
-    luminance = 0.2126*rgb[0] + 0.7152*rgb[1] + 0.0722*rgb[2]
-    
+    luminance = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+
     if luminance <= 0:
         return [0.0, 0.0, 0.0]
-    
+
     # Normalize to unit luminance for chromaticity mapping
     normalized_rgb = rgb / luminance
-    
+
     # Clip chromaticity to valid range (naive strategy)
     clipped_chrom = np.clip(normalized_rgb, 0.0, 1.0)
-    
+
     # Restore original luminance (preserving brightness)
     result = clipped_chrom * luminance
-    
+
     return result
 ```
 
@@ -294,14 +294,14 @@ Use colour-science library to create RGB→RGB transformation matrices:
 import colour
 
 # Define reference space (e.g., ACEScg)
-reference_space = colour.RGB_COLOURSPACES['ACEScg']
+reference_space = colour.RGB_COLOURSPACES["ACEScg"]
 
 # Define display space from measured primaries
 display_space = colour.RGB_Colourspace(
-    name='Custom Display',
+    name="Custom Display",
     primaries=display_primaries,  # Measured [R, G, B] xy coordinates
     whitepoint=display_whitepoint,  # Measured xy coordinates
-    name='Custom'
+    name="Custom",
 )
 
 # Create direct RGB→RGB conversion matrix

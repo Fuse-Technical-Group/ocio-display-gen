@@ -37,6 +37,9 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.uv]
+required-version = ">=0.12"
+
 [tool.hatch.build.targets.wheel]
 packages = ["ocio_display_gen"]
 
@@ -47,6 +50,11 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]  # Enable pycodestyle errors, pyflakes, warnings, and isort
 ignore = ["E203"]  # Ignore whitespace before ':'
+
+# The stub PyOpenColorIO.pyi at the repository root would otherwise sort
+# PyOpenColorIO as first-party; the module itself is the installed wheel.
+[tool.ruff.lint.isort]
+known-third-party = ["PyOpenColorIO"]
 
 [tool.ruff.format]
 quote-style = "double"
