@@ -17,6 +17,8 @@ from ocio_display_gen._core import (
     SHOW_MANIFEST_FILE,
     VP_RADIOMETRIC_VIEW,
     check_predictions,
+    describe_black,
+    describe_contrast,
     describe_processing_state,
     provenance_description,
 )
@@ -90,8 +92,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     print(f"\nDisplay: {characterization.name}")
     print(f"Peak luminance: {characterization.peak_luminance} cd/m\u00b2")
-    print(f"Black level: {characterization.black_level} cd/m\u00b2")
-    print(f"Contrast ratio: {characterization.contrast_ratio:.0f}:1")
+    print(f"Black level: {describe_black(characterization)}")
+    print(f"Contrast ratio: {describe_contrast(characterization)}")
     print(f"EOTF: {characterization.eotf_type}")
     intensity = characterization.processor_intensity
     print(
