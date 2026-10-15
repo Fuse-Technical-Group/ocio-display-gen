@@ -1,4 +1,4 @@
-"""The importable surface (§spec:session-ownership).
+"""The importable surface.
 
 Generation is a library call. The command line is one caller of it, so
 these tests exercise it without argparse, without a working directory

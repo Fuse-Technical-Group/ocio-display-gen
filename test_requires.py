@@ -10,19 +10,20 @@ from ocio_display_gen.requires import (
 )
 
 
-def test_a_config_reads_one_block() -> None:
-    """The whole of what a config takes from an artifact — primaries,
-    white point, black level, peak luminance — is the anchors."""
-    assert REQUIRES == {"anchors": 1}
+def test_a_config_reads_the_anchors_and_the_response() -> None:
+    """Primaries, white point, black level and peak luminance come from
+    the anchors; the encode comes from each channel's measured response."""
+    assert REQUIRES == {"anchors": 1, "response": 1}
 
 
 def test_an_artifact_carrying_the_anchors_passes() -> None:
     check({"protocol": {"blocks": ["anchors/1", "response/1"]}})
 
 
-def test_a_config_grade_artifact_passes() -> None:
-    """Five patches is a whole measurement for this consumer."""
-    check({"protocol": {"blocks": ["anchors/1"]}})
+def test_an_anchors_only_artifact_is_refused_naming_the_suite() -> None:
+    """Five patches cannot say how the display encodes."""
+    with pytest.raises(UnsupportedArtifact, match="response.*--suite verify"):
+        check({"protocol": {"blocks": ["anchors/1"]}})
 
 
 def test_an_artifact_without_the_anchors_is_refused_by_name() -> None:

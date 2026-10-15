@@ -1,7 +1,6 @@
 # ocio-display-gen — Requirements
 
-System requirements live in the
-[color-wrangler umbrella](https://github.com/Fuse-Technical-Group/color-wrangler)
+System requirements live in the umbrella project
 (problem statement, user stories, priorities, and system-wide
 constraints). This file scopes them to the generate layer.
 
@@ -49,7 +48,7 @@ recorded in the umbrella.
   Humans never edit measured values.
 - Radiometric claims require the explicit nits anchor recorded in the
   show manifest; above-peak handling is a recorded, selectable policy.
-- No hardware I/O in this component — sessions (color-wrangler) own
+- No hardware I/O in this component — measurement sessions own
   instruments and signal devices.
 
 ## User stories §req:user-stories

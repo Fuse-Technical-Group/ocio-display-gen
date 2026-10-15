@@ -1,9 +1,7 @@
 # ocio-display-gen — Specification
 
-Component spec for the **generate layer** of
-[color-wrangler](https://github.com/Fuse-Technical-Group/color-wrangler)
-— characterization-based color management for real-time playback on
-LED surfaces. The system problem, four-layer architecture, artifact
+Component spec for the **generate layer** of a characterization-based
+color management system for real-time playback on LED surfaces. The system problem, four-layer architecture, artifact
 contracts, measurement sessions, and verification policy live in the
 umbrella spec; sections here refine the generate layer only.
 Terminology (including "wall" as shorthand for any LED surface)
@@ -13,7 +11,7 @@ follows the umbrella.
 
 *Status: complete*
 
-Within the color-wrangler system, this component turns a show manifest
+Within the umbrella system, this component turns a show manifest
 and a promoted measurements artifact into a single self-contained OCIO
 config — the profile and rendering intents for one measured wall — and
 into the predictions file that verification measures against. It needs
@@ -21,7 +19,7 @@ OCIO semantics and no hardware: fully testable without a photon.
 
 ## Characterization inputs §spec:characterization-model
 
-*Status: in progress*
+*Status: complete*
 
 The generator consumes the two artifact-chain files defined by the
 umbrella: the human-authored **show manifest** (naming, policies,
@@ -33,6 +31,35 @@ artifact; policy checks (enums, anchor bounds) target the manifest —
 with strict and warning modes. Missing promotion pointer, unreadable
 artifact, or hash mismatch fail loud.
 
+**The encode is measured, not declared.** A gamma display encodes
+through each channel's measured response. Real panels sit far from the
+exponent their processor declares: a BP2 (NS) behind an S8 measured 40%
+above its declared 2.35 from code 192 to 512 and more than twice it
+from code 16 to 64, so a config built from the exponent renders
+everything below the highlights wrong. The declared exponent survives
+only as the shaper that spreads the curve's input and as the recorded
+signal contract.
+
+The inverse EOTF is two inline stages. A shaper, the declared gamma
+with a linear toe ending at the lowest measured rung, gives the encode
+a finite slope at black. A per-channel curve then maps each shaped rung
+to the code that measured it: exact at the rungs, monotone and smooth
+between them, and the identity for a display that matches its declared
+gamma. Below the lowest rung the encode is straight to zero, since
+nothing was measured there.
+
+**Why a curve, not a 1D LUT:** OCIO cannot write a `Lut1DTransform`
+into a config, and a LUT file beside it would break the single
+self-contained file the target runtimes require
+(§spec:config-structure). `GradingRGBCurveTransform` serializes inline.
+OCIO bounds how many points it holds, so a response denser than that
+keeps an even subset of its rungs, both ends included.
+
+A ramp that fails to rise, or reads no light, is refused by channel
+and code: those rungs read the instrument, not the display, and a curve
+through them would invert the shadows. A config therefore requires the
+artifact's `response` block as well as its anchors.
+
 **A bounded black is not a black level.** When the instrument refused
 black as too dark, the artifact records it as below the instrument's
 floor (measurements schema 3). The generator carries that bound as an
@@ -43,12 +70,6 @@ not run on it — a ratio the instrument limits says nothing about the
 display. The bound is a floor with the conditions behind it, which is
 what §spec:renderable-floor asks a config to carry rather than a bare
 number.
-
-Still open in this component: consuming measured per-channel response
-ramps (fitted 1D LUTs in place of the ideal EOTF). The shipped
-`ftg_bench_*.yaml` samples are hand-built exemplars, labeled as such;
-`measurements/*.csmf` are session-written seam files, and
-`sx40_pr655_dark_20261015.csmf` carries a bounded black.
 
 ## Generated config structure §spec:config-structure
 
@@ -62,8 +83,9 @@ OCIO's native two-part structure:
 
 - A **display colorspace**, defined relative to the display reference
   (CIE-XYZ-D65), holds only measured colorimetry: XYZ → native-RGB
-  matrix, absolute luminance scaling, and the inverse of the processor's
-  EOTF. It contains no creative decisions and is exact within gamut.
+  matrix, absolute luminance scaling, and the inverse of the measured
+  EOTF (§spec:characterization-model). It contains no creative decisions
+  and is exact within gamut.
 - **View transforms** hold the rendering — how unbounded scene-linear
   maps into the wall's gamut and luminance range (§spec:view-transform).
 - `addDisplayView` entries expose the wall as a named display with
@@ -251,8 +273,8 @@ id as stem in the probe directory beside the config:
   the renderer's output is judged against the same predictions. The
   input space is load-bearing: the file has to be interpreted as the
   config's scene reference, and a renderer that assumes another space
-  produces plausible but wrong output. The session half lives in the
-  umbrella roadmap (`§road:renderer-verification` there).
+  produces plausible but wrong output. The session half belongs to the
+  umbrella project.
 
 The PNG's no-image-library rationale does not transfer to the EXR:
 this artifact exists to be interpreted by the renderer, not to bypass

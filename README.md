@@ -1,6 +1,6 @@
 # OCIO Custom Display Configuration Generator
 
-The **generate layer** of [color-wrangler](https://github.com/Fuse-Technical-Group/color-wrangler) — characterization-based color management for real-time playback on LED surfaces. System architecture, measurement sessions, and verification policy live in the umbrella; this repo turns measurements into OCIO configs.
+The **generate layer** of a characterization-based color management system for real-time playback on LED surfaces. System architecture, measurement sessions, and verification policy live in the umbrella project; this repo turns measurements into OCIO configs.
 
 A tool for creating and appending[^1] custom display colorspaces to existing OpenColorIO (OCIO) configurations, using measured display data including custom primaries, white point, luminance, and EOTF characteristics.
 
@@ -40,7 +40,7 @@ having an unknown algorithm in the display do the transformation.
 
 3. **Edit configuration files**:
    - `show_manifest.yaml` - Your show decisions (naming, signal contract, base config selection) and the promotion pointer to the measurements artifact
-   - `measurements/ftg_bench_20260811.yaml` - Measurements artifact of record, machine-written by a `color-wrangler characterize` session
+   - `measurements/roe-bp2-ns_brompton-s8_20260930_ca410.yaml` - Measurements artifact of record, machine-written by a characterization session
    - `validation_settings.yaml` - Validation parameters (optional, uses defaults if missing)
 
 4. **Generate custom configuration**:
@@ -59,7 +59,7 @@ having an unknown algorithm in the display do the transformation.
 
 2. **Edit configuration files**:
    - `show_manifest.yaml` - Your show decisions (naming, signal contract, base config selection) and the promotion pointer to the measurements artifact
-   - `measurements/ftg_bench_20260811.yaml` - Measurements artifact of record, machine-written by a `color-wrangler characterize` session
+   - `measurements/roe-bp2-ns_brompton-s8_20260930_ca410.yaml` - Measurements artifact of record, machine-written by a characterization session
    - `validation_settings.yaml` - Validation parameters (optional, uses defaults if missing)
 
 3. **Generate custom configuration**:
@@ -117,16 +117,20 @@ Human-authored and reviewed. Contains:
 ### Measurements artifact (`measurements/*.yaml`)
 
 Machine-written by a characterization session, immutable, never
-hand-edited (the shipped `measurements/ftg_bench_20260811.yaml` was
-measured by color-wrangler on the FTG bench rig). Contains measured primaries and white point, black
-level and peak luminance, ambient floor, instrument identity,
-processor-state snapshot, and timestamps. Accept a measurement run by
+hand-edited (the shipped
+`measurements/roe-bp2-ns_brompton-s8_20260930_ca410.yaml` measured a ROE
+Black Pearl 2 (NS) behind a Brompton S8, with a spectroradiometer and a
+colorimeter corrected against it). Contains measured primaries and white
+point, black level and peak luminance, each channel's measured response,
+ambient floor, instrument identity, processor-state snapshot, and
+timestamps. Accept a measurement run by
 recording its sha256 in the show manifest's promotion pointer;
 generation refuses when the artifact on disk no longer matches the
 recorded hash.
 
-The shipped `show_manifest.yaml` and `measurements/ftg_bench_20260811.yaml`
-are a working example; see those files for the schema.
+The shipped `show_manifest.yaml` and
+`measurements/roe-bp2-ns_brompton-s8_20260930_ca410.yaml` are a working
+example; see those files for the schema.
 
 The pointer may also name a `display-measure characterize` seam file
 (`measurements/*.csmf`). Its `sha256` is the promotion hash the session

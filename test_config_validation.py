@@ -9,7 +9,9 @@ import pytest
 import yaml  # type: ignore[import]
 
 from conftest import (
+    FULL_CODE,
     GAMMA,
+    LADDER_CODES,
     PEAK_LUMINANCE,
     SAMPLE_ARTIFACT_NAME,
     SAMPLE_BLACK_LEVEL,
@@ -80,6 +82,16 @@ def make_measurements_dict(black_level: float = 0.005) -> dict[str, Any]:
         "luminance": {
             "black_level": black_level,
             "peak_luminance": PEAK_LUMINANCE,
+        },
+        "per_channel_response": {
+            channel: [
+                {
+                    "code": c,
+                    "xyz": [0.0, PEAK_LUMINANCE * (c / FULL_CODE) ** GAMMA, 0.0],
+                }
+                for c in LADDER_CODES
+            ]
+            for channel in ("red", "green", "blue")
         },
         "ambient_floor": 5.0,
         "processor_state": {

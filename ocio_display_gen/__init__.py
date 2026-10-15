@@ -2,8 +2,7 @@
 
 The public surface is `generate`, which takes a manifest path and returns
 a `GeneratedConfig` describing what it wrote. Importing this package has
-no side effects and prints nothing, so a UI may import it at startup
-(`§road:ui-ocio-config` in color-wrangler).
+no side effects and prints nothing, so a UI may import it at startup.
 
 The command line lives in `ocio_display_gen.cli` and is one caller among
 others.

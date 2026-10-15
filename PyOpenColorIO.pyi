@@ -1,4 +1,5 @@
 # Type stubs for PyOpenColorIO v2
+import builtins
 from typing import Any, Iterator, List, overload
 
 # Module-level functions
@@ -56,6 +57,36 @@ class ExponentTransform:
     def __init__(self) -> None: ...
     def setValue(self, value: List[float]) -> None: ...
 
+class ExponentWithLinearTransform:
+    def __init__(
+        self,
+        gamma: List[float] = ...,
+        offset: List[float] = ...,
+        negativeStyle: Any = ...,
+        direction: Any = ...,
+    ) -> None: ...
+
+class GradingBSplineCurve:
+    def __init__(self, values: List[float]) -> None: ...
+
+class GradingRGBCurve:
+    red: GradingBSplineCurve
+    green: GradingBSplineCurve
+    blue: GradingBSplineCurve
+    master: GradingBSplineCurve
+    def __init__(self) -> None: ...
+
+class GradingRGBCurveTransform:
+    def __init__(
+        self,
+        style: Any = ...,
+        values: GradingRGBCurve = ...,
+        dynamic: bool = ...,
+        direction: Any = ...,
+    ) -> None: ...
+
+class Exception(builtins.Exception): ...
+
 class BuiltinTransform:
     def __init__(self, name: str) -> None: ...
     def setDirection(self, direction: Any) -> None: ...
@@ -87,6 +118,8 @@ class Processor:
 
 class Config:
     def __init__(self) -> None: ...
+    @staticmethod
+    def CreateRaw() -> "Config": ...
     @staticmethod
     def CreateFromFile(path: str) -> "Config": ...
     @staticmethod
@@ -138,6 +171,7 @@ ROLE_INTERCHANGE_SCENE: str
 ROLE_INTERCHANGE_DISPLAY: str
 REFERENCE_SPACE_SCENE: Any
 REFERENCE_SPACE_DISPLAY: Any
+GRADING_VIDEO: Any
 FIXED_FUNCTION_ACES_RGB_TO_JMH_20: Any
 FIXED_FUNCTION_ACES_GAMUT_COMPRESS_20: Any
 FIXED_FUNCTION_ACES_OUTPUT_TRANSFORM_20: Any

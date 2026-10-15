@@ -17,10 +17,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-# Block name -> the lowest version this generator can read. The whole of
-# what a config takes from an artifact is the display's primaries, white
-# point, black level and peak luminance, and one block carries all four.
-REQUIRES: dict[str, int] = {"anchors": 1}
+# Block name -> the lowest version this generator can read. A config
+# takes the display's primaries, white point, black level and peak
+# luminance from the anchors, and its encode from each channel's
+# measured response: a gamma display does not follow its declared
+# exponent closely enough to be encoded by it.
+REQUIRES: dict[str, int] = {"anchors": 1, "response": 1}
 
 # Artifacts written before blocks were recorded carry a protocol name
 # instead. Every artifact measured to date is one of these.
@@ -83,5 +85,5 @@ def check(measurements: Mapping[str, object]) -> None:
         + ". A config reads "
         + ", ".join(sorted(REQUIRES))
         + " — measure a suite composing it "
-        + "(`display-measure characterize --suite config`)."
+        + "(`display-measure characterize --suite verify`)."
     )
