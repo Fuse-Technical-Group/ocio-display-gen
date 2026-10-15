@@ -1099,7 +1099,10 @@ def resolve_measurements_pointer(
     # The pointer path is recorded verbatim in shipped config metadata:
     # absolute paths and traversal tie the audit trail to one machine's
     # directory layout and leak it into distributed configs.
-    if os.path.isabs(pointer_file) or os.pardir in re.split(r"[\\/]", pointer_file):
+    # Absolute by either platform's rules, not just the running one's: a
+    # manifest written on one OS is generated from on another.
+    absolute = posixpath.isabs(pointer_file) or ntpath.isabs(pointer_file)
+    if absolute or os.pardir in re.split(r"[\\/]", pointer_file):
         raise ValueError(
             f"Show manifest '{manifest_path}' promotion pointer file "
             f"'{pointer_file}' must be a relative path inside the show manifest's "

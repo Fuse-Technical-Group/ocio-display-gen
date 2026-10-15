@@ -21,6 +21,15 @@
   // (.github/workflows/quality.yml), so these matter only to a developer
   // running the tool by hand — which is exactly when an ignore list earns its
   // place.
+  //
+  // Rule settings live here under "config" rather than in a separate
+  // .markdownlint.json: rumdl, the governance lint's engine, reads only the
+  // first markdownlint config it finds, so a second file is silently ignored.
+  "config": {
+    "MD013": false,
+    "MD024": false,
+    "MD036": false
+  },
   "ignores": [
     "CHANGELOG.md",
     "COLOR_PIPELINE_DOCUMENTATION.md",
