@@ -48,7 +48,7 @@ Still open in this component: consuming measured per-channel response
 ramps (fitted 1D LUTs in place of the ideal EOTF). The shipped
 `ftg_bench_*.yaml` samples are hand-built exemplars, labeled as such;
 `measurements/*.csmf` are session-written seam files, and
-`sx40_pr655_dark_20261015.csmf` carries a bounded black.
+`sx40_pr655_dark_verify_20261015.csmf` carries a bounded black.
 
 ## Generated config structure §spec:config-structure
 
