@@ -8,6 +8,7 @@ it is about generating a config, which is why it is not in the library.
 from __future__ import annotations
 
 import argparse
+import io
 import os
 import sys
 from typing import List, Optional
@@ -65,6 +66,12 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
 def main(argv: Optional[List[str]] = None) -> int:
     """Generate, or inspect a predictions artifact. Returns an exit code."""
+    # The report prints symbols (✓, ❌, cd/m²) that a Windows console code
+    # page cannot encode once output is piped or redirected, which crashed
+    # generation mid-report. UTF-8 is what every caller here can read.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8")
     args = parse_args(argv)
     if args.check_predictions:
         try:
