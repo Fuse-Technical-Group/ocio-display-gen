@@ -128,6 +128,13 @@ recorded hash.
 The shipped `show_manifest.yaml` and `measurements/ftg_bench_20260811.yaml`
 are a working example; see those files for the schema.
 
+The pointer may also name a `display-measure characterize` seam file
+(`measurements/*.csmf`). Its `sha256` is the promotion hash the session
+reports at handoff, and reading one needs the `csmf` extra
+(`uv sync --extra csmf`). A session whose instrument refused black as
+too dark records it as below the instrument's floor; the config then
+describes black as that bound and labels contrast instrument-limited.
+
 ## Base OCIO Configuration Selection
 
 The system loads base configurations using the `ocio://` scheme, which provides access to pre-built OCIO configurations:
