@@ -71,3 +71,9 @@ quote-style = "double"
 # head moves. Reverts to the released pin once the upstream PR merges
 # (§road:specio-pin-revert in display-measure).
 colour-specio = { git = "https://github.com/repentsinner/colour-specio", rev = "981d48627c7b2a02e14897500fa1a67da8f61c8a" }
+
+# colour-specio ships no py.typed marker, and is absent entirely where
+# the optional csmf extra is not installed.
+[[tool.mypy.overrides]]
+module = ["specio.*"]
+ignore_missing_imports = true
