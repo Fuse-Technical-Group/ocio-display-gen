@@ -1,0 +1,4 @@
+# The repository is LF. Hashed inputs are verified over their bytes
+# (§spec:provenance): a checkout that rewrote line endings would break
+# the promotion hash of every artifact in it.
+* text=auto eol=lf
