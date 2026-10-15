@@ -6,9 +6,9 @@ value. The generator carries the bound as one: the description says
 "below", contrast is a lower bound labelled instrument-limited, and the
 contrast plausibility check does not run on it.
 
-The real fixture is a dark-room session: a PR-655 on a BP2 (NS) behind an
-SX40, 2026-10-15, whose black the PR-655 refused below its stated
-3.4 cd/m² floor.
+The real fixture is a dark-room verify-suite session: a PR-655 on a BP2
+(NS) behind an SX40, 2026-10-15, whose black and darkest ramp steps the
+PR-655 refused below its stated 3.4 cd/m² floor.
 """
 
 from __future__ import annotations
@@ -31,9 +31,9 @@ from ocio_display_gen._core import (
 )
 
 REPO = Path(__file__).parent
-DARK = "measurements/sx40_pr655_dark_20261015.csmf"
+DARK = "measurements/sx40_pr655_dark_verify_20261015.csmf"
 # The promotion hash the session reported at handoff.
-DARK_SHA256 = "31db7eb437538c3c85c8c510529774da89403ffe4ff6fb58e8a34971249dc375"
+DARK_SHA256 = "002805bd232d6e3870149494d8493f3a20f0495a22be9a0b4e2cced639ac7e7d"
 
 
 def _specio_available() -> bool:
