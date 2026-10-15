@@ -16,7 +16,8 @@ from ocio_display_gen._core import (
     parse_measurements_artifact,
 )
 
-BENCH = Path("/tmp/bench_config_20260831_2102.csmf")
+# The committed copy of a real config-suite session, 2026-08-31.
+BENCH = Path(__file__).parent / "measurements" / "ftg_bench_config_20260831.csmf"
 
 
 class TestDispatchesOnSuffix:
