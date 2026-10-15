@@ -53,9 +53,9 @@ def blocks_carried(measurements: Mapping[str, object]) -> dict[str, int] | None:
             if name and version.isdigit():
                 blocks[name] = int(version)
         return blocks
-    name = protocol.get("name")
-    if isinstance(name, str) and name in LEGACY_PROTOCOL_BLOCKS:
-        return dict(LEGACY_PROTOCOL_BLOCKS[name])
+    legacy = protocol.get("name")
+    if isinstance(legacy, str) and legacy in LEGACY_PROTOCOL_BLOCKS:
+        return dict(LEGACY_PROTOCOL_BLOCKS[legacy])
     return None
 
 
