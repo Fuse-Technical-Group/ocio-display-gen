@@ -139,6 +139,9 @@ class DisplayCharacterization:
             None  # Measured white point (xy coordinates)
         )
         self.black_level = 0.0  # Measured black level (cd/m²)
+        # When the instrument refused black as too dark, the floor it was
+        # below (cd/m²); black_level is then that floor, an upper bound.
+        self.black_level_bound: Optional[float] = None
         self.peak_luminance = 1000.0  # Measured peak luminance (cd/m²)
         self.contrast_ratio = 1000.0  # Measured contrast ratio
         self.eotf_type = "PQ"  # Display EOTF type: "PQ", "HLG", "GAMMA"
@@ -376,7 +379,7 @@ def create_display_colorspace_from_characterization(
     cs.setDescription(
         f"Display colorspace for {characterization.name} "
         f"(Peak: {characterization.peak_luminance} cd/m², "
-        f"Black: {characterization.black_level} cd/m², "
+        f"Black: {describe_black(characterization)}, "
         f"EOTF: {eotf_type}) "
         f"CIE-XYZ-D65 → native RGB matrix → luminance scale → "
         f"hard clip → inverse {eotf_type} EOTF. "
@@ -1189,6 +1192,34 @@ def load_inputs(
     return manifest, measurements, provenance
 
 
+def black_level_bound(luminance: Dict[str, Any]) -> Optional[float]:
+    """The floor a bounded black level sits below, or None for a reading.
+
+    A measurements/3 artifact records a black its instrument refused as
+    too dark as `{below, floor_source}`: at most `below` cd/m², never a
+    value (§spec:characterization-model).
+    """
+    black = luminance.get("black_level")
+    if isinstance(black, dict) and "below" in black:
+        return float(black["below"])
+    return None
+
+
+def describe_black(characterization: "DisplayCharacterization") -> str:
+    """Black level as prose: a reading, or the floor it is below."""
+    if characterization.black_level_bound is not None:
+        return f"below {characterization.black_level_bound} cd/m² (instrument floor)"
+    return f"{characterization.black_level} cd/m²"
+
+
+def describe_contrast(characterization: "DisplayCharacterization") -> str:
+    """Contrast as prose; a ratio resting on a bound is a lower bound."""
+    ratio = f"{characterization.contrast_ratio:.0f}:1"
+    if characterization.black_level_bound is not None:
+        return f"at least {ratio} (instrument-limited)"
+    return ratio
+
+
 def create_characterization(
     manifest: Dict[str, Any], measurements: Dict[str, Any]
 ) -> DisplayCharacterization:
@@ -1230,14 +1261,23 @@ def create_characterization(
 
     # Measured luminance from the artifact
     luminance = measurements["luminance"]
-    char.black_level = luminance["black_level"]
     char.peak_luminance = luminance["peak_luminance"]
-    # Guard the division: non-strict validation lets a zero black level
-    # through with a warning.
-    if char.black_level > 0:
-        char.contrast_ratio = char.peak_luminance / char.black_level
+    bound = black_level_bound(luminance)
+    if bound is not None:
+        # The instrument refused black as too dark: what is known is an
+        # upper bound, and a contrast ratio from it is a lower bound on
+        # the display's — instrument-limited, never the display's own.
+        char.black_level = bound
+        char.black_level_bound = bound
+        char.contrast_ratio = char.peak_luminance / bound
     else:
-        char.contrast_ratio = float("inf")
+        char.black_level = luminance["black_level"]
+        # Guard the division: non-strict validation lets a zero black
+        # level through with a warning.
+        if char.black_level > 0:
+            char.contrast_ratio = char.peak_luminance / char.black_level
+        else:
+            char.contrast_ratio = float("inf")
 
     # Intended signal contract (§spec:signal-contract) is a decision:
     # the lockdown state the config is valid for, distinct from the
@@ -1493,8 +1533,14 @@ def validate_measurements_data(
             print("   Skipping duv validation")
 
     # Check luminance values
+    # A black the instrument refused as too dark is an upper bound, not a
+    # reading: it is positive by construction, and a contrast ratio from
+    # it bounds the display's from below rather than measuring it.
+    bound = black_level_bound(measurements["luminance"])
     if validation_config.get("check_luminance", True):
-        black_level = measurements["luminance"]["black_level"]
+        black_level = (
+            bound if bound is not None else measurements["luminance"]["black_level"]
+        )
         peak_luminance = measurements["luminance"]["peak_luminance"]
 
         if black_level <= 0:
@@ -1527,8 +1573,16 @@ def validate_measurements_data(
                 print(message)
 
     # Check contrast ratio (skipped for non-positive black level, which
-    # the luminance check above already reported).
-    black_level = float(measurements["luminance"]["black_level"])
+    # the luminance check above already reported, and for a bounded one,
+    # whose ratio is instrument-limited rather than the display's).
+    if bound is not None:
+        print(
+            f"ℹ️  Black level is below the instrument floor ({bound} cd/m²); "
+            "contrast ratio is instrument-limited and not checked"
+        )
+    black_level = (
+        0.0 if bound is not None else float(measurements["luminance"]["black_level"])
+    )
     if validation_config.get("check_contrast", True) and black_level > 0:
         peak_luminance = float(measurements["luminance"]["peak_luminance"])
         contrast_ratio = peak_luminance / black_level

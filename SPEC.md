@@ -33,11 +33,22 @@ artifact; policy checks (enums, anchor bounds) target the manifest —
 with strict and warning modes. Missing promotion pointer, unreadable
 artifact, or hash mismatch fail loud.
 
+**A bounded black is not a black level.** When the instrument refused
+black as too dark, the artifact records it as below the instrument's
+floor (measurements schema 3). The generator carries that bound as an
+upper bound: the display description reads "below *floor* cd/m²
+(instrument floor)", the contrast ratio from it is a lower bound
+labelled instrument-limited, and the contrast plausibility check does
+not run on it — a ratio the instrument limits says nothing about the
+display. The bound is a floor with the conditions behind it, which is
+what §spec:renderable-floor asks a config to carry rather than a bare
+number.
+
 Still open in this component: consuming measured per-channel response
-ramps (fitted 1D LUTs in place of the ideal EOTF) and real
-session-written artifacts once `color-wrangler characterize` exists
-(the shipped sample artifact is a hand-built exemplar, labeled as
-such).
+ramps (fitted 1D LUTs in place of the ideal EOTF). The shipped
+`ftg_bench_*.yaml` samples are hand-built exemplars, labeled as such;
+`measurements/*.csmf` are session-written seam files, and
+`sx40_pr655_dark_verify_20261015.csmf` carries a bounded black.
 
 ## Generated config structure §spec:config-structure
 
