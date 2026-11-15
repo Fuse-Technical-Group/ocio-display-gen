@@ -3,9 +3,9 @@
 
 import numpy as np
 import numpy.typing as npt
-import PyOpenColorIO as OCIO
 import pytest
 
+import PyOpenColorIO as OCIO
 from conftest import (
     GAMMA,
     PEAK_LUMINANCE,

@@ -22,7 +22,7 @@ dependencies = [
 [project.scripts]
 ocio-display-gen = "ocio_display_gen.cli:main"
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "mypy>=1.8.0",
     # Test-only independent EXR reader: the hand-rolled probe writer's
@@ -32,6 +32,9 @@ dev = [
     "pytest>=8.0.0",
     "ruff>=0.1.0",
 ]
+
+[tool.mypy]
+files = ["ocio_display_gen"]
 
 [build-system]
 requires = ["hatchling"]

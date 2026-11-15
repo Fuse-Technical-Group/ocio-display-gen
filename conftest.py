@@ -7,9 +7,9 @@ from typing import Any
 import colour
 import numpy as np
 import numpy.typing as npt
-import PyOpenColorIO as OCIO
 import pytest
 
+import PyOpenColorIO as OCIO
 from ocio_display_gen._core import (
     D65_WHITE_XY,
     DisplayCharacterization,

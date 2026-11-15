@@ -58,20 +58,14 @@ jobs:
 
   # --- correctness ---
 
-  # ruff is pinned to py311 in pyproject.toml, so one leg carries the
-  # full lint signal; only pytest is version-sensitive.
-  lint:
+  # ruff, mypy, plus one test run through bug-free-happiness's shared Python
+  # workflow, which pins the lint and type-check tools centrally.
+  python:
     needs: classify
     if: needs.classify.outputs.derived_release_commit != 'true' && needs.classify.outputs.promotion_pr != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
-          python-version: "3.13"
-      - run: uv sync --extra dev
-      - run: uv run --extra dev ruff format --check .
-      - run: uv run --extra dev ruff check .
+    uses: repentsinner/bug-free-happiness/.github/workflows/python-correctness.yml@8bb4c839a8707cfa7f86be288553635f1e39d3c4 # v0.5.0
+    with:
+      type-checker: mypy
 
   test:
     needs: classify
@@ -85,8 +79,8 @@ jobs:
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --extra dev
-      - run: uv run --extra dev pytest
+      - run: uv sync
+      - run: uv run pytest
 
   # This repository ships no shell scripts, so the job passes on an empty set
   # until one lands.
@@ -151,7 +145,7 @@ jobs:
 
   quality-correctness:
     name: quality / correctness
-    needs: [classify, lint, test, shellcheck, actionlint]
+    needs: [classify, python, test, shellcheck, actionlint]
     if: always()
     runs-on: ubuntu-latest
     steps:

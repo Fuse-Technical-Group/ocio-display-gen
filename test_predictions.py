@@ -19,10 +19,10 @@ import colour
 import numpy as np
 import numpy.typing as npt
 import OpenEXR
-import PyOpenColorIO as OCIO
 import pytest
 import yaml  # type: ignore[import]
 
+import PyOpenColorIO as OCIO
 from conftest import (
     SAMPLE_ARTIFACT_NAME,
     SAMPLE_MANIFEST_PATH,

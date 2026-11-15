@@ -2,9 +2,9 @@
 """Tests for registering the wall as a named OCIO display."""
 
 import numpy as np
-import PyOpenColorIO as OCIO
 import pytest
 
+import PyOpenColorIO as OCIO
 from conftest import (
     ACES2_STUDIO_CONFIG_URI,
     GAMMA,

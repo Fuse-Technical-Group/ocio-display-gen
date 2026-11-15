@@ -8,10 +8,10 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-import PyOpenColorIO as OCIO
 import pytest
 import yaml  # type: ignore[import]
 
+import PyOpenColorIO as OCIO
 from conftest import (
     ACES2_STUDIO_CONFIG_URI,
     SAMPLE_ARTIFACT_NAME,
