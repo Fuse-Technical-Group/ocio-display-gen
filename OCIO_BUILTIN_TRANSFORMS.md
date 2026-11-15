@@ -11,22 +11,22 @@ Many commonly assumed builtin transforms **do not actually exist** in OCIO:
 ### **Gamut Mapping (All Non-Existent)**
 ```python
 # ❌ These DO NOT EXIST:
-OCIO.BuiltinTransform("GAMUT-MAP - PERCEPTUAL")     # ❌
-OCIO.BuiltinTransform("GAMUT-MAP - SATURATION")     # ❌  
-OCIO.BuiltinTransform("GAMUT-MAP - RELATIVE")       # ❌
-OCIO.BuiltinTransform("GAMUT-MAP - ABSOLUTE")       # ❌
-OCIO.BuiltinTransform("GAMUT-MAP - SOFT-CLIP")      # ❌
-OCIO.BuiltinTransform("GAMUT-MAP - ADAPTIVE")       # ❌
-OCIO.BuiltinTransform("GAMUT-MAP - HUE-PRESERVING") # ❌
+OCIO.BuiltinTransform("GAMUT-MAP - PERCEPTUAL")  # ❌
+OCIO.BuiltinTransform("GAMUT-MAP - SATURATION")  # ❌
+OCIO.BuiltinTransform("GAMUT-MAP - RELATIVE")  # ❌
+OCIO.BuiltinTransform("GAMUT-MAP - ABSOLUTE")  # ❌
+OCIO.BuiltinTransform("GAMUT-MAP - SOFT-CLIP")  # ❌
+OCIO.BuiltinTransform("GAMUT-MAP - ADAPTIVE")  # ❌
+OCIO.BuiltinTransform("GAMUT-MAP - HUE-PRESERVING")  # ❌
 ```
 
 ### **Generic Curve Transforms (Most Non-Existent)**
 ```python
 # ❌ These DO NOT EXIST:
-OCIO.BuiltinTransform("CURVE - LINEAR_to_sRGB")      # ❌
-OCIO.BuiltinTransform("CURVE - LINEAR_to_REC709")    # ❌
+OCIO.BuiltinTransform("CURVE - LINEAR_to_sRGB")  # ❌
+OCIO.BuiltinTransform("CURVE - LINEAR_to_REC709")  # ❌
 OCIO.BuiltinTransform("CURVE - LINEAR_to_GAMMA2.4")  # ❌
-OCIO.BuiltinTransform("CURVE - LINEAR_to_HLG")       # ❌
+OCIO.BuiltinTransform("CURVE - LINEAR_to_HLG")  # ❌
 ```
 
 ## ✅ **What Actually Exists**
@@ -34,27 +34,27 @@ OCIO.BuiltinTransform("CURVE - LINEAR_to_HLG")       # ❌
 ### **Working Curve Transforms**
 ```python
 # ✅ These DO EXIST:
-OCIO.BuiltinTransform("CURVE - LINEAR_to_ST-2084")    # ✅ PQ OETF
-OCIO.BuiltinTransform("CURVE - ST-2084_to_LINEAR")    # ✅ PQ EOTF 
-OCIO.BuiltinTransform("CURVE - HLG-OETF")             # ✅ HLG OETF
-OCIO.BuiltinTransform("CURVE - HLG-OETF-INVERSE")     # ✅ HLG EOTF
+OCIO.BuiltinTransform("CURVE - LINEAR_to_ST-2084")  # ✅ PQ OETF
+OCIO.BuiltinTransform("CURVE - ST-2084_to_LINEAR")  # ✅ PQ EOTF
+OCIO.BuiltinTransform("CURVE - HLG-OETF")  # ✅ HLG OETF
+OCIO.BuiltinTransform("CURVE - HLG-OETF-INVERSE")  # ✅ HLG EOTF
 ```
 
 ### **Display Transforms (Include Full Pipeline)**
 ```python
 # ✅ These DO EXIST and include primaries + OETF:
-OCIO.BuiltinTransform("DISPLAY - CIE-XYZ-D65_to_sRGB")              # ✅
+OCIO.BuiltinTransform("DISPLAY - CIE-XYZ-D65_to_sRGB")  # ✅
 OCIO.BuiltinTransform("DISPLAY - CIE-XYZ-D65_to_REC.1886-REC.709")  # ✅
-OCIO.BuiltinTransform("DISPLAY - CIE-XYZ-D65_to_REC.2100-PQ")       # ✅
-OCIO.BuiltinTransform("DISPLAY - CIE-XYZ-D65_to_DisplayP3")         # ✅
+OCIO.BuiltinTransform("DISPLAY - CIE-XYZ-D65_to_REC.2100-PQ")  # ✅
+OCIO.BuiltinTransform("DISPLAY - CIE-XYZ-D65_to_DisplayP3")  # ✅
 ```
 
 ### **ACES Transforms**
 ```python
 # ✅ These DO EXIST:
-OCIO.BuiltinTransform("UTILITY - ACES-AP1_to_CIE-XYZ-D65_BFD")      # ✅
-OCIO.BuiltinTransform("ACES-LMT - BLUE_LIGHT_ARTIFACT_FIX")          # ✅
-OCIO.BuiltinTransform("ACES-OUTPUT - ACES2065-1_to_CIE-XYZ-D65 - SDR-VIDEO_1.0") # ✅
+OCIO.BuiltinTransform("UTILITY - ACES-AP1_to_CIE-XYZ-D65_BFD")  # ✅
+OCIO.BuiltinTransform("ACES-LMT - BLUE_LIGHT_ARTIFACT_FIX")  # ✅
+OCIO.BuiltinTransform("ACES-OUTPUT - ACES2065-1_to_CIE-XYZ-D65 - SDR-VIDEO_1.0")  # ✅
 ```
 
 ## 🛠️ **Alternatives for Missing Transforms**
@@ -69,7 +69,7 @@ Since builtin gamut mapping transforms don't exist, you must:
 ```python
 # Instead of non-existent "CURVE - LINEAR_to_GAMMA2.4"
 gamma_transform = OCIO.ExponentTransform()
-gamma_values = [1.0/2.4] * 4  # OETF is 1/gamma for RGBA
+gamma_values = [1.0 / 2.4] * 4  # OETF is 1/gamma for RGBA
 gamma_transform.setValue(gamma_values)
 ```
 

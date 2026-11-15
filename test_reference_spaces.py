@@ -3,10 +3,10 @@
 
 import colour
 import numpy as np
-import PyOpenColorIO as OCIO
 import pytest
 
 import ocio_display_gen._core as OCIODisplayGen
+import PyOpenColorIO as OCIO
 from conftest import (
     ACES2_STUDIO_CONFIG_URI,
     STUDIO_CONFIG_URI,

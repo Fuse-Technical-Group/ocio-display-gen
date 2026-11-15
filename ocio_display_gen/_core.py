@@ -17,8 +17,9 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple, cast
 import colour
 import numpy as np
 import numpy.typing as npt
-import PyOpenColorIO as OCIO
 import yaml  # type: ignore[import]
+
+import PyOpenColorIO as OCIO
 
 
 def derive_reference_spaces(ocio_config: "OCIO.Config") -> Tuple[str, str]:

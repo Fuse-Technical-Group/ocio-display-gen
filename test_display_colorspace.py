@@ -3,9 +3,9 @@
 
 import colour
 import numpy as np
-import PyOpenColorIO as OCIO
 import pytest
 
+import PyOpenColorIO as OCIO
 from conftest import (
     GAMMA,
     PEAK_LUMINANCE,
@@ -297,7 +297,6 @@ def test_fractional_measured_peak_parameterizes_the_fixed_functions(
     # The full registration path parameterizes the fixed functions with
     # the quantized peak — this raised before the fix.
     import PyOpenColorIO as OCIO
-
     from conftest import ACES2_STUDIO_CONFIG_URI
     from ocio_display_gen._core import register_display
 
