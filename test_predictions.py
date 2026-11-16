@@ -161,19 +161,43 @@ def ap0_to_xyz_d65_matrix() -> npt.NDArray[np.float64]:
     return np.asarray(cat @ ap0.matrix_RGB_to_XYZ, dtype=np.float64)
 
 
+def measured_linear(code: float, rungs: Tuple[Tuple[float, float], ...]) -> float:
+    """Linear drive for a code on the measured response: a local power
+    law between rungs, straight to zero below the lowest. Built from the
+    rungs alone, independently of the config's curve."""
+    codes, lums = np.array(rungs).T
+    if code <= codes[0]:
+        return float(lums[0] * code / codes[0])
+    return float(np.exp(np.interp(np.log(code), np.log(codes), np.log(lums))))
+
+
+# The config's curve and the local power law agree exactly at the
+# measured rungs and to a few codes between them, which is a percent or
+# so of light in the shadows.
+MEASURED_MODEL_RTOL = 1e-2
+
+
 def test_predicted_xyz_matches_colour_science_display_model(
     generated: Tuple[Path, Any],
 ) -> None:
     """Every prediction states: drive the wall with these code values and
-    it emits this XYZ. Reproduce that claim with colour-science."""
+    it emits this XYZ. Reproduce that claim with colour-science and the
+    measured response."""
     _, predictions = generated
     manifest, measurements = load_sample_inputs()
     char = create_characterization(manifest, measurements)
     matrix = wall_native_to_xyz_matrix(char)
     for patch in predictions.patches:
-        linear = np.asarray(patch.code_value, dtype=np.float64) ** char.gamma_value
+        linear = np.array(
+            [
+                measured_linear(code, char.channel_response[channel])
+                for code, channel in zip(patch.code_value, ("red", "green", "blue"))
+            ]
+        )
         expected = matrix @ (linear * char.peak_luminance)
-        assert np.allclose(patch.xyz, expected, rtol=2e-4, atol=2e-4), patch.id
+        assert np.allclose(patch.xyz, expected, rtol=MEASURED_MODEL_RTOL, atol=2e-4), (
+            patch.id
+        )
 
 
 def test_neutral_ramp_matches_colour_science_end_to_end(

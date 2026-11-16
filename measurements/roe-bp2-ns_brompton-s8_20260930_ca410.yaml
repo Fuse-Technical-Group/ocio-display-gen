@@ -1,0 +1,574 @@
+# Machine-written by a `display-measure characterize` session;
+# immutable, never hand-edited (§spec:artifact-chain). Promote
+# into a show manifest as {file, sha256}.
+schema: "color-wrangler/measurements/2"
+
+measurement_date: "2026-09-30"
+
+session:
+  start: "2026-09-30T11:20:03.705693+00:00"
+  end: "2026-09-30T11:26:12.265885+00:00"
+
+instrument:
+  manufacturer: "display-measure"
+  model: "disciplined-hybrid"
+  serial_number: "A00322+80005086"
+
+# CIE xy chromaticities measured through the full chain
+# (processor + panels), end-to-end black box.
+colorimetry:
+  primaries:
+    red: [0.693171021, 0.306096558]
+    green: [0.179673728, 0.739713950]
+    blue: [0.135063877, 0.053516620]
+  white_point: [0.323008420, 0.324966762]
+
+# Absolute luminance, cd/m².
+luminance:
+  black_level: 0.000054399
+  peak_luminance: 1944.154890712
+
+# Ambient floor at measurement time, cd/m² (display showing black;
+# reflected ambient plus panel leakage).
+ambient_floor: 0.000054399
+
+# Processor state read at measurement time (read-only snapshot),
+# except panel_state, which is carried and never checked.
+# processing_disabled asserts only that nothing in the path adapts
+# to the content; the per-feature block below is the full state,
+# and static linearization being on is expected, not a fault.
+processor_state:
+  eotf:
+    type: "GAMMA"
+    gamma_value: 2.350000000
+  intensity: "1800 nits"
+  # Operator attestation: no API leaf reports these, and each
+  # moves the measurement. Artifacts recorded under different
+  # panel state describe different displays.
+  panel_state:
+    operating_mode: "Normal Mode"
+    selected_calibration: "Internal Colour Cal (Factory)"
+  processing_disabled: true
+  processing:
+    dark-magic: true
+    puretone: false
+    extended-bit-depth: true
+    overdrive: false
+
+# The link the patches rode to the device (§spec:measurements-artifact).
+wire_encoding:
+  layout: "r12b"
+  bit_depth: 12
+  sampling: "rgb"
+  subsampling: "444"
+  levels: "full"
+  matrix: "identity"
+  # The inclusive code span the link carries, per component.
+  legal_codes:
+    rgb: [0, 4095]
+  # The codes the wire carried per driven patch, in the same order
+  # as presentation_order.
+  wire_codes:
+    - [2048, 0, 0]
+    - [0, 2048, 0]
+    - [0, 0, 2048]
+    - [0, 0, 0]
+    - [4095, 4095, 4095]
+    - [0, 48, 0]
+    - [48, 0, 0]
+    - [256, 256, 256]
+    - [768, 0, 0]
+    - [64, 64, 64]
+    - [1536, 1536, 1536]
+    - [256, 0, 0]
+    - [0, 0, 16]
+    - [128, 0, 0]
+    - [0, 0, 1024]
+    - [96, 96, 96]
+    - [2048, 2048, 2048]
+    - [768, 768, 768]
+    - [0, 0, 24]
+    - [24, 0, 0]
+    - [0, 0, 768]
+    - [128, 128, 128]
+    - [1024, 0, 0]
+    - [0, 0, 4095]
+    - [0, 0, 96]
+    - [0, 0, 128]
+    - [16, 16, 16]
+    - [0, 384, 0]
+    - [0, 32, 0]
+    - [192, 0, 0]
+    - [0, 256, 0]
+    - [0, 0, 512]
+    - [96, 0, 0]
+    - [0, 768, 0]
+    - [512, 0, 0]
+    - [4095, 0, 0]
+    - [0, 1024, 0]
+    - [0, 1536, 0]
+    - [384, 0, 0]
+    - [0, 4095, 4095]
+    - [0, 128, 0]
+    - [192, 192, 192]
+    - [1536, 0, 0]
+    - [0, 3072, 0]
+    - [0, 96, 0]
+    - [0, 0, 384]
+    - [0, 0, 64]
+    - [4095, 0, 4095]
+    - [0, 0, 48]
+    - [0, 4095, 0]
+    - [0, 0, 256]
+    - [0, 0, 1536]
+    - [0, 64, 0]
+    - [4095, 4095, 0]
+    - [0, 0, 192]
+    - [3072, 0, 0]
+    - [0, 16, 0]
+    - [512, 512, 512]
+    - [32, 32, 32]
+    - [1024, 1024, 1024]
+    - [0, 512, 0]
+    - [0, 24, 0]
+    - [0, 0, 3072]
+    - [0, 192, 0]
+    - [32, 0, 0]
+    - [24, 24, 24]
+    - [3072, 3072, 3072]
+    - [0, 0, 32]
+    - [48, 48, 48]
+    - [16, 0, 0]
+    - [384, 384, 384]
+    - [64, 0, 0]
+
+# Patch protocol (MEASUREMENT.md, versioned with the tool).
+# presentation_order is the unshuffle key: patch names in the
+# order driven (§spec:sessions).
+protocol:
+  name: "color-wrangler/characterize/3"
+  # The measurement blocks this session drove, name and
+  # version each. A consumer requires blocks, not a bundle.
+  blocks:
+    - "anchors/1"
+    - "response/1"
+    - "additivity/1"
+    - "derivation/1"
+  presentation_order:
+    - "red_2048"
+    - "green_2048"
+    - "blue_2048"
+    - "black"
+    - "white"
+    - "green_0048"
+    - "red_0048"
+    - "gray_0256"
+    - "red_0768"
+    - "gray_0064"
+    - "gray_1536"
+    - "red_0256"
+    - "blue_0016"
+    - "red_0128"
+    - "blue_1024"
+    - "gray_0096"
+    - "gray_2048"
+    - "gray_0768"
+    - "blue_0024"
+    - "red_0024"
+    - "blue_0768"
+    - "gray_0128"
+    - "red_1024"
+    - "blue"
+    - "blue_0096"
+    - "blue_0128"
+    - "gray_0016"
+    - "green_0384"
+    - "green_0032"
+    - "red_0192"
+    - "green_0256"
+    - "blue_0512"
+    - "red_0096"
+    - "green_0768"
+    - "red_0512"
+    - "red"
+    - "green_1024"
+    - "green_1536"
+    - "red_0384"
+    - "cyan"
+    - "green_0128"
+    - "gray_0192"
+    - "red_1536"
+    - "green_3072"
+    - "green_0096"
+    - "blue_0384"
+    - "blue_0064"
+    - "magenta"
+    - "blue_0048"
+    - "green"
+    - "blue_0256"
+    - "blue_1536"
+    - "green_0064"
+    - "yellow"
+    - "blue_0192"
+    - "red_3072"
+    - "green_0016"
+    - "gray_0512"
+    - "gray_0032"
+    - "gray_1024"
+    - "green_0512"
+    - "green_0024"
+    - "blue_3072"
+    - "green_0192"
+    - "red_0032"
+    - "gray_0024"
+    - "gray_3072"
+    - "blue_0032"
+    - "gray_0048"
+    - "red_0016"
+    - "gray_0384"
+    - "red_0064"
+  # Elapsed seconds per patch (drive through read), same
+  # order as presentation_order; session-clock derived.
+  patch_seconds: [4.936578000, 6.449187000, 6.091343000, 6.682181000, 4.946588000, 1.872469000, 1.561585000, 1.421371000, 20.142339000, 0.858921000, 6.493986000, 0.701931000, 6.633718000, 2.344398000, 0.870964000, 0.858226000, 4.996929000, 20.038361000, 6.688814000, 6.432063000, 1.405219000, 0.873732000, 13.691275000, 3.403098000, 0.918893000, 0.805502000, 6.605950000, 2.378895000, 1.653814000, 1.325305000, 0.798961000, 0.653318000, 0.820337000, 21.982139000, 0.642835000, 3.171681000, 20.208582000, 9.218944000, 0.702803000, 3.445810000, 0.982546000, 0.874280000, 6.554127000, 4.474414000, 1.022867000, 0.831637000, 1.665539000, 3.900899000, 1.748533000, 4.276110000, 0.999086000, 8.988936000, 0.877728000, 3.385569000, 0.993685000, 3.789524000, 6.832146000, 23.569551000, 1.677359000, 14.233524000, 21.814021000, 1.674510000, 5.238272000, 0.874675000, 1.624541000, 1.462106000, 4.213984000, 1.834541000, 1.503151000, 6.491392000, 23.576825000, 0.833998000]
+  # The protocol code values driven per patch, same order.
+  driven_codes:
+    - [2048, 0, 0]
+    - [0, 2048, 0]
+    - [0, 0, 2048]
+    - [0, 0, 0]
+    - [4095, 4095, 4095]
+    - [0, 48, 0]
+    - [48, 0, 0]
+    - [256, 256, 256]
+    - [768, 0, 0]
+    - [64, 64, 64]
+    - [1536, 1536, 1536]
+    - [256, 0, 0]
+    - [0, 0, 16]
+    - [128, 0, 0]
+    - [0, 0, 1024]
+    - [96, 96, 96]
+    - [2048, 2048, 2048]
+    - [768, 768, 768]
+    - [0, 0, 24]
+    - [24, 0, 0]
+    - [0, 0, 768]
+    - [128, 128, 128]
+    - [1024, 0, 0]
+    - [0, 0, 4095]
+    - [0, 0, 96]
+    - [0, 0, 128]
+    - [16, 16, 16]
+    - [0, 384, 0]
+    - [0, 32, 0]
+    - [192, 0, 0]
+    - [0, 256, 0]
+    - [0, 0, 512]
+    - [96, 0, 0]
+    - [0, 768, 0]
+    - [512, 0, 0]
+    - [4095, 0, 0]
+    - [0, 1024, 0]
+    - [0, 1536, 0]
+    - [384, 0, 0]
+    - [0, 4095, 4095]
+    - [0, 128, 0]
+    - [192, 192, 192]
+    - [1536, 0, 0]
+    - [0, 3072, 0]
+    - [0, 96, 0]
+    - [0, 0, 384]
+    - [0, 0, 64]
+    - [4095, 0, 4095]
+    - [0, 0, 48]
+    - [0, 4095, 0]
+    - [0, 0, 256]
+    - [0, 0, 1536]
+    - [0, 64, 0]
+    - [4095, 4095, 0]
+    - [0, 0, 192]
+    - [3072, 0, 0]
+    - [0, 16, 0]
+    - [512, 512, 512]
+    - [32, 32, 32]
+    - [1024, 1024, 1024]
+    - [0, 512, 0]
+    - [0, 24, 0]
+    - [0, 0, 3072]
+    - [0, 192, 0]
+    - [32, 0, 0]
+    - [24, 24, 24]
+    - [3072, 3072, 3072]
+    - [0, 0, 32]
+    - [48, 48, 48]
+    - [16, 0, 0]
+    - [384, 384, 384]
+    - [64, 0, 0]
+
+# The absolute XYZ (cd/m²) read for each driven patch, in
+# presentation order — the seam file's own rows. The response
+# sections below are the same readings in protocol order.
+readings:
+  - [259.008699776, 114.356740116, 0.204558780]
+  - [59.709799203, 245.997729158, 26.730187184]
+  - [65.061090243, 25.794788224, 390.850530787]
+  - [0.000052331, 0.000054399, 0.000140935]
+  - [1932.438860878, 1944.154890712, 2106.033137546]
+  - [0.023583783, 0.091040685, 0.009473628]
+  - [0.083417114, 0.036946022, 0.000369298]
+  - [3.894108342, 4.018144335, 4.309365227]
+  - [28.572138697, 12.620261656, 0.043003168]
+  - [0.270386059, 0.286042508, 0.298748253]
+  - [197.612559098, 198.921965792, 213.970223852]
+  - [2.501646298, 1.104631089, 0.001689262]
+  - [0.001105050, 0.000521450, 0.006555082]
+  - [0.544219208, 0.240282393, 0.000496173]
+  - [13.431729931, 5.352342195, 80.766198228]
+  - [0.457198525, 0.475877820, 0.507970006]
+  - [381.999430470, 384.243445701, 412.670841571]
+  - [43.337737707, 43.988429139, 47.450440884]
+  - [0.003394603, 0.001483387, 0.020489758]
+  - [0.015397547, 0.006796328, 0.000137042]
+  - [7.259593536, 2.907062883, 43.683010293]
+  - [0.858483708, 0.890123522, 0.948398932]
+  - [53.306021988, 23.542350603, 0.058325856]
+  - [327.748142044, 129.864276718, 1969.003412747]
+  - [0.074805828, 0.030662680, 0.450656423]
+  - [0.140178077, 0.057219318, 0.845984391]
+  - [0.008393468, 0.008827391, 0.008059287]
+  - [1.657142462, 6.655434730, 0.692846491]
+  - [0.008740706, 0.033617377, 0.003379008]
+  - [1.288923467, 0.568881470, 0.000864970]
+  - [0.633523587, 2.545629412, 0.263798631]
+  - [3.304007122, 1.339582067, 19.923868231]
+  - [0.287700475, 0.126979040, -0.000096329]
+  - [6.833767318, 27.826908752, 2.972503735]
+  - [12.849333234, 5.672311461, 0.009325803]
+  - [1303.517252391, 575.618615714, 1.377327995]
+  - [12.504176707, 51.175135784, 5.523116341]
+  - [30.861480834, 126.860319036, 13.758663691]
+  - [6.528557066, 2.881199423, 0.005705198]
+  - [628.870799312, 1368.727550339, 2105.109509295]
+  - [0.141352182, 0.562857660, 0.058288154]
+  - [2.006871125, 2.072011668, 2.219315936]
+  - [133.129262324, 58.796295336, 0.154415321]
+  - [153.209636064, 631.173860223, 68.646941997]
+  - [0.075810776, 0.300807084, 0.030788996]
+  - [1.681273671, 0.682547140, 10.140501159]
+  - [0.042196349, 0.017742855, 0.255211128]
+  - [1629.202005785, 704.913037555, 1968.856865499]
+  - [0.021592553, 0.009134441, 0.129990566]
+  - [300.432140446, 1236.874458318, 134.791729215]
+  - [0.643207713, 0.261385006, 3.876586372]
+  - [33.460595292, 13.325366010, 200.945421018]
+  - [0.045911143, 0.178556442, 0.017495301]
+  - [1599.781125867, 1810.444419330, 136.767638731]
+  - [0.330929538, 0.134694156, 1.993829422]
+  - [661.069550243, 291.703020700, 0.677994771]
+  - [0.001485037, 0.005455015, 0.000601737]
+  - [19.910306949, 20.444867985, 22.098217629]
+  - [0.051176039, 0.053976917, 0.055580627]
+  - [79.679536484, 80.540116160, 86.862225715]
+  - [3.210008593, 12.855268708, 1.351270773]
+  - [0.003991808, 0.015305239, 0.001519115]
+  - [166.831004861, 66.167688229, 1002.717379606]
+  - [0.327267991, 1.311694415, 0.136607953]
+  - [0.031542903, 0.014007650, 0.000343612]
+  - [0.024512885, 0.025662387, 0.025363410]
+  - [979.366085786, 985.639743337, 1061.423447019]
+  - [0.007828586, 0.003440751, 0.046749612]
+  - [0.139100947, 0.147206069, 0.154276685]
+  - [0.005446634, 0.002449946, 0.000154782]
+  - [10.163791191, 10.442686885, 11.279129539]
+  - [0.164066331, 0.072403285, 0.000147001]
+
+# How each row got its spectrum, in presentation order
+# (§spec:spectral-retention). sha256 digests the row's samples,
+# which the seam file carries; derived_across is the luminance
+# span (cd/m²) a reconstruction was scaled across, so a reader
+# can judge how far it was extrapolated.
+spectra:
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "464f3ff3717e97f32ea0322b8d11078791b69b068cef5ca4bf73abd44af8e2fb"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "0c4e926e129554cb2ae84408e48b57e72542a53679fd90e3fa02dcc26cc6d713"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "49fe336a77419b9b707f8ec58e9b474d9405fd63c8119e3f26628f9ade2d73ce"}
+  - {provenance: "absent"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "fa4a8ff75b3d2da213a0e91a81f4eba2087f7a4a9e8047c3debc33dcee49120b"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.091040685, 245.997729158], sha256: "0a2966df0c9988db40a8ffdf0c9f53beb63c9c52c72b036cdbbcf0d451d4b016"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.036946022, 114.356740116], sha256: "cd7c832c4d11dffdf5d479e4e2380b563e150a8bf83f94093ce5a0d3b2bb8b36"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [4.018144335, 1944.154890712], sha256: "299c0936de3953a990598abfbe91a280f9daee13764ed2ea8cc72a21ea21a1c2"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "de122626d12fd02b6f0355793af383168136f1019456c64412d6793fd97ed22c"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.286042508, 1944.154890712], sha256: "d666817f6b79acb1b8b4b744bbfa5fb54b116e8f7934b6f2794752f8dde72646"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "f61cfb7072f2ecb7ea33293e0148709d9136b2a1ec53ded64b6d9f378b45acc7"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [1.104631089, 114.356740116], sha256: "481001632a4b79e5201379a4c3e0cc0091e9b65af1d4b069196199d2a65c63f0"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.000521450, 25.794788224], sha256: "45f8e9638eca9d830511daf0e02aef66c709a717052feb3e1ccc1febf0880400"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.240282393, 114.356740116], sha256: "c873823465b433b872b5a7e2427c806c357d1b97ae4ff1273a738ae5d90003dd"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [5.352342195, 25.794788224], sha256: "08365c97762c5ccff5c10098377dedb87b77b6ffe2335f1f5d3c4aa527a09d87"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.475877820, 1944.154890712], sha256: "967f5abac61c110f73a3661f4e0d6131c4f152d94c70deb9c0df83730f958af0"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "62a1c83ba04903aa23cbfbf8b16ab33a7e24f02150a94210d74d055011c55539"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "68067a69a4cc0c3afbd4b08f6ccab3fc23e0c67d61f1a3ca45ef3c0967c9b2eb"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.001483387, 25.794788224], sha256: "2a5b212501f5aacf31716fed3d48f3b49ec92a43487d786080aa3e68a9211089"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.006796328, 114.356740116], sha256: "c7a83bd08a9d8a1cdb9448758995c49a24e3521a9a5ec256d7871b2afe63de88"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [2.907062883, 25.794788224], sha256: "fa999084a0ca8d19944ae8c7b0954fa7f257a56774cc0348a79d65802ec87aaf"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.890123522, 1944.154890712], sha256: "437eb3f7bd175f0f3915e39e4b8aea82b56c26b097b5abc67b7a7af91bc37422"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "db5d72a2c311e404ea20b51f21e61fe9aebc2205cefcb1bf2638691dfa7dd904"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "ea308d4a1a64921ce026fd2ee9eb8d84234751b3c243c0680e6d0a9ada03b427"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.030662680, 129.864276718], sha256: "610ba0bcf28c25ba96ea59d03d787908d0e2657c06fe4362908d9ba7610f5189"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.057219318, 129.864276718], sha256: "0f2f97700bb6e2c793a9db1eb2e1e624a2f9789e8207bb9ef0755f78756e38fb"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.008827391, 1944.154890712], sha256: "d04e2cbd2d1997dac070dfceb51fa2191b1ce070f07d8dc7eb6d74d1567d81c4"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [6.655434730, 245.997729158], sha256: "98d1d51c5d9fe8ec633eee02e5a928d3d8277ab81c5c8afe9352110ee77d1b6a"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.033617377, 245.997729158], sha256: "d121bc942b06e61925a7e814a36c2d483d71c99d61328b132f8ec699fee80e49"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.568881470, 114.356740116], sha256: "2b2dd6ece21a3d435e3d23aa83d3c6413ba1a2d083ae2634a6caa32634db0136"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [2.545629412, 245.997729158], sha256: "c989885c84e71c5e6e59557abc2e8277e9bf83f26fa20254cc098cd8c3e61b6e"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [1.339582067, 129.864276718], sha256: "f9ebe7074fd0294fb2448e00bcc59a65c26fc3cff7f7f02ef1dd66b266e57916"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.126979040, 114.356740116], sha256: "40022ae3744b310c4b5620c12a2ae5fd74cb6dce78aaee0bc820bbde3a79ecf0"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "bb4114616a63aa0171a48a95dc4266fd7e4d7307f38f446e95d5ee97db489c04"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [5.672311461, 114.356740116], sha256: "b3cd5ab2f488dd93720b349a36dbc33a3779a02b8974ff8e56e01fa2848c6383"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "b56b51cc0bfaaf9bff338c747546614c6c1efcb46c2f754816f0cb9dcc3c4a7e"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "fc42db287fa3ddd1eb920f9213f812420324f361fa9e546fb8fb0b5d79b85296"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "ed98256a993634fc7ff78e1239389f572967c0d23d4572ee78cee8b3e79b3459"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [2.881199423, 575.618615714], sha256: "7a143a7ab7aebe70f77776d95d9f5a3f70dcb1470d73cf7a544b20245feff513"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "183b12a39b495c4f5dd8f85ba5cf0dea782a8bbca25da1c0274a768edb7c47f5"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.562857660, 245.997729158], sha256: "c4be51fa01c51d922941a874570c0b84ea6fbac4cf80b8e0cc644d14708927d8"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [2.072011668, 1944.154890712], sha256: "69bea67a379aa8e2b36c4ba501b7d2f7e48b9935eee83557f4f57da751be4cfc"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "6c24be0441184a774810d8567da1e9097725e381338580001c4a486a511956f2"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "ff9a9e3275717dee6fd27e36f69de573e5b608200a937804db9eab62d260bba6"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.300807084, 631.173860223], sha256: "2b49c02f4613904944947e74e0a8fac4314c12a288fb2473fad00bd0fa6f98a8"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.682547140, 129.864276718], sha256: "2cb1cbf8651017fb4305ff95d80c9efa98335ac636458f3e9a34a8e18e06b546"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.017742855, 129.864276718], sha256: "2186538405dc5403277ca8414d870f3b3a0980408e577c7d5a373ad3afea7424"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "ed25a18005249f9166d592b71d5143914c97abf4fb21e8827c527375ca6ba085"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.009134441, 129.864276718], sha256: "b9dadc22f9b1d6451c610cb34215b9542920d49c58ed11f09af22c7293c2f171"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "1dfd7615143af8c10c86066867c6dc42a12683fa546bd2475f00fd91e0c48e09"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.261385006, 129.864276718], sha256: "bce5c514b2a8a7e65463bfef9d38e1a004b6048bc92564240913cd91682606d9"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "ea60c711886d63159405275280812c0d2874f451e9ee4dc777880ea97224abaa"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.178556442, 1236.874458318], sha256: "122da6a422838692a810ac1c774b6f1b9bed240151063cae27b769411b94d6eb"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "318c6a6d10c576fa44f6e54693029af1804bbc9b937197a99c62e88d9aafe63b"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.134694156, 129.864276718], sha256: "496743d7f368b37ee1082459de627fa468e9434f425b70ddb45c8005eee04da2"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "1ae8dc66095c389dd8dde597348d7240fddd5cce1debf7bed6f028620b9bd1b2"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.005455015, 1236.874458318], sha256: "76b02a42e7f60ca66498f8da375c965ac6df2dd10eef42ac6e6bc0828279f2fe"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "2f47568ac992718783d20a8197de5d0375b3ba4c4d910659ca5a1e099b216481"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.053976917, 1944.154890712], sha256: "f90264a5fb405c831e44d1b7abbe9f5da0aaa3fe4ae52503b3d77ae604a1b1cd"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "3919b6ddd89c5c6141b6082a633a83688a84ea49614bb4bfc45ffae45f035b3b"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "b5e1bacd6baf78361bf4aaaa9253c2b1ff7723cfa0c2812459c60af6480a9e9a"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.015305239, 1236.874458318], sha256: "d3a060cadbfbb684fe13e98f1f79efde0ccf74d64fc014b761716838942208a8"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "cb4dcc181a56d30be308a35d44aee1ec1888d037ae196c125a144829e3e1ff1e"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [1.311694415, 1236.874458318], sha256: "3a6dccd1baa4ce3479759b1f8cb3c58f63b7e4a88fe31acb2b55b3909db64794"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.014007650, 575.618615714], sha256: "14e80d310f5f405f696891d0e61be2e8758e23cdf5e9cab7c41e1148c8e0fb22"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.025662387, 1944.154890712], sha256: "906fdae25169c6537470e12fb846d6cb805587c917572c324d1242ab846be33f"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "e855d55c9223edc09e8b7d416f97c456afc604ea7dd5e19c066e8b72b1cd882f"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.003440751, 129.864276718], sha256: "5c6bf97455a0ebca3f9b4ea99c80b96fb9a68694364fe688c7fcec8b19c38c00"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.147206069, 1944.154890712], sha256: "f77cb48f89bd2268c8e38c968a8c4890c0e2a25cdcf49a2b0a58f80d883e54e2"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.002449946, 575.618615714], sha256: "1a4ccd9d58ab3cb339e4ae9907a3166902c5947cba1951ae9d023f967518ae87"}
+  - {provenance: "measured", samples: 401, range: [380.000, 780.000], sha256: "6e313059945a106dd79be23a7e508f4f423509fcff704deb69e19230d3828b36"}
+  - {provenance: "reconstructed", samples: 401, range: [380.000, 780.000], derived_across: [0.072403285, 575.618615714], sha256: "49c5b65f50967cbf6ea39d2ab5fd33c6894c1a77aadfb99f339c5340a690bdbc"}
+
+# Two instruments, one artifact (§spec:sessions).
+# The correction is derived in-session from paired readings of
+# the full-drive R/G/B anchors and applied in software, so it is
+# auditable here rather than buried in the colorimeter.
+instrument_routing:
+  method: "four-color-matrix"
+  spectroradiometer:
+    manufacturer: "Colorimetry Research"
+    model: "CR-300"
+    serial_number: "A00322"
+    firmware: "1.44.0-S28"
+  colorimeter:
+    manufacturer: "Konica-Minolta"
+    model: "CA-410 CA-VP427A"
+    serial_number: "80005086"
+    firmware: "Ver.1.80.0002"
+  # XYZ_corrected = correction_matrix @ XYZ_colorimeter.
+  correction_matrix:
+    - [1.040450356, 0.001442855, -0.002060895]
+    - [-0.006676713, 1.020337869, 0.000326102]
+    - [-0.002132722, 0.006490026, 1.004248133]
+  # Patches measuring at or above this corrected luminance
+  # (cd/m²) route to the spectroradiometer, the rest to the
+  # disciplined colorimeter.
+  luminance_threshold: 10.000000000
+  # The instrument behind each row, in presentation order.
+  sources: ["spectroradiometer", "spectroradiometer", "spectroradiometer", "colorimeter", "spectroradiometer", "colorimeter", "colorimeter", "colorimeter", "spectroradiometer", "colorimeter", "spectroradiometer", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "spectroradiometer", "spectroradiometer", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "spectroradiometer", "spectroradiometer", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "colorimeter", "spectroradiometer", "colorimeter", "spectroradiometer", "spectroradiometer", "spectroradiometer", "colorimeter", "spectroradiometer", "colorimeter", "colorimeter", "spectroradiometer", "spectroradiometer", "colorimeter", "colorimeter", "colorimeter", "spectroradiometer", "colorimeter", "spectroradiometer", "colorimeter", "spectroradiometer", "colorimeter", "spectroradiometer", "colorimeter", "spectroradiometer", "colorimeter", "spectroradiometer", "colorimeter", "spectroradiometer", "spectroradiometer", "colorimeter", "spectroradiometer", "colorimeter", "colorimeter", "colorimeter", "spectroradiometer", "colorimeter", "colorimeter", "colorimeter", "spectroradiometer", "colorimeter"]
+
+# Shadow-dense single-channel ramps: absolute XYZ (cd/m²) per
+# driven code, protocol-ordered.
+per_channel_response:
+  red:
+    - {code: 16, xyz: [0.005446634, 0.002449946, 0.000154782]}
+    - {code: 24, xyz: [0.015397547, 0.006796328, 0.000137042]}
+    - {code: 32, xyz: [0.031542903, 0.014007650, 0.000343612]}
+    - {code: 48, xyz: [0.083417114, 0.036946022, 0.000369298]}
+    - {code: 64, xyz: [0.164066331, 0.072403285, 0.000147001]}
+    - {code: 96, xyz: [0.287700475, 0.126979040, -0.000096329]}
+    - {code: 128, xyz: [0.544219208, 0.240282393, 0.000496173]}
+    - {code: 192, xyz: [1.288923467, 0.568881470, 0.000864970]}
+    - {code: 256, xyz: [2.501646298, 1.104631089, 0.001689262]}
+    - {code: 384, xyz: [6.528557066, 2.881199423, 0.005705198]}
+    - {code: 512, xyz: [12.849333234, 5.672311461, 0.009325803]}
+    - {code: 768, xyz: [28.572138697, 12.620261656, 0.043003168]}
+    - {code: 1024, xyz: [53.306021988, 23.542350603, 0.058325856]}
+    - {code: 1536, xyz: [133.129262324, 58.796295336, 0.154415321]}
+    - {code: 2048, xyz: [259.008699776, 114.356740116, 0.204558780]}
+    - {code: 3072, xyz: [661.069550243, 291.703020700, 0.677994771]}
+    - {code: 4095, xyz: [1303.517252391, 575.618615714, 1.377327995]}
+  green:
+    - {code: 16, xyz: [0.001485037, 0.005455015, 0.000601737]}
+    - {code: 24, xyz: [0.003991808, 0.015305239, 0.001519115]}
+    - {code: 32, xyz: [0.008740706, 0.033617377, 0.003379008]}
+    - {code: 48, xyz: [0.023583783, 0.091040685, 0.009473628]}
+    - {code: 64, xyz: [0.045911143, 0.178556442, 0.017495301]}
+    - {code: 96, xyz: [0.075810776, 0.300807084, 0.030788996]}
+    - {code: 128, xyz: [0.141352182, 0.562857660, 0.058288154]}
+    - {code: 192, xyz: [0.327267991, 1.311694415, 0.136607953]}
+    - {code: 256, xyz: [0.633523587, 2.545629412, 0.263798631]}
+    - {code: 384, xyz: [1.657142462, 6.655434730, 0.692846491]}
+    - {code: 512, xyz: [3.210008593, 12.855268708, 1.351270773]}
+    - {code: 768, xyz: [6.833767318, 27.826908752, 2.972503735]}
+    - {code: 1024, xyz: [12.504176707, 51.175135784, 5.523116341]}
+    - {code: 1536, xyz: [30.861480834, 126.860319036, 13.758663691]}
+    - {code: 2048, xyz: [59.709799203, 245.997729158, 26.730187184]}
+    - {code: 3072, xyz: [153.209636064, 631.173860223, 68.646941997]}
+    - {code: 4095, xyz: [300.432140446, 1236.874458318, 134.791729215]}
+  blue:
+    - {code: 16, xyz: [0.001105050, 0.000521450, 0.006555082]}
+    - {code: 24, xyz: [0.003394603, 0.001483387, 0.020489758]}
+    - {code: 32, xyz: [0.007828586, 0.003440751, 0.046749612]}
+    - {code: 48, xyz: [0.021592553, 0.009134441, 0.129990566]}
+    - {code: 64, xyz: [0.042196349, 0.017742855, 0.255211128]}
+    - {code: 96, xyz: [0.074805828, 0.030662680, 0.450656423]}
+    - {code: 128, xyz: [0.140178077, 0.057219318, 0.845984391]}
+    - {code: 192, xyz: [0.330929538, 0.134694156, 1.993829422]}
+    - {code: 256, xyz: [0.643207713, 0.261385006, 3.876586372]}
+    - {code: 384, xyz: [1.681273671, 0.682547140, 10.140501159]}
+    - {code: 512, xyz: [3.304007122, 1.339582067, 19.923868231]}
+    - {code: 768, xyz: [7.259593536, 2.907062883, 43.683010293]}
+    - {code: 1024, xyz: [13.431729931, 5.352342195, 80.766198228]}
+    - {code: 1536, xyz: [33.460595292, 13.325366010, 200.945421018]}
+    - {code: 2048, xyz: [65.061090243, 25.794788224, 390.850530787]}
+    - {code: 3072, xyz: [166.831004861, 66.167688229, 1002.717379606]}
+    - {code: 4095, xyz: [327.748142044, 129.864276718, 1969.003412747]}
+
+# Gray tracking ramp (r=g=b), same codes as the channel ramps.
+gray_response:
+  - {code: 16, xyz: [0.008393468, 0.008827391, 0.008059287]}
+  - {code: 24, xyz: [0.024512885, 0.025662387, 0.025363410]}
+  - {code: 32, xyz: [0.051176039, 0.053976917, 0.055580627]}
+  - {code: 48, xyz: [0.139100947, 0.147206069, 0.154276685]}
+  - {code: 64, xyz: [0.270386059, 0.286042508, 0.298748253]}
+  - {code: 96, xyz: [0.457198525, 0.475877820, 0.507970006]}
+  - {code: 128, xyz: [0.858483708, 0.890123522, 0.948398932]}
+  - {code: 192, xyz: [2.006871125, 2.072011668, 2.219315936]}
+  - {code: 256, xyz: [3.894108342, 4.018144335, 4.309365227]}
+  - {code: 384, xyz: [10.163791191, 10.442686885, 11.279129539]}
+  - {code: 512, xyz: [19.910306949, 20.444867985, 22.098217629]}
+  - {code: 768, xyz: [43.337737707, 43.988429139, 47.450440884]}
+  - {code: 1024, xyz: [79.679536484, 80.540116160, 86.862225715]}
+  - {code: 1536, xyz: [197.612559098, 198.921965792, 213.970223852]}
+  - {code: 2048, xyz: [381.999430470, 384.243445701, 412.670841571]}
+  - {code: 3072, xyz: [979.366085786, 985.639743337, 1061.423447019]}
+  - {code: 4095, xyz: [1932.438860878, 1944.154890712, 2106.033137546]}
+
+# Full-drive two-channel sums for additivity analysis, absolute XYZ.
+additivity:
+  yellow: [1599.781125867, 1810.444419330, 136.767638731]
+  cyan: [628.870799312, 1368.727550339, 2105.109509295]
+  magenta: [1629.202005785, 704.913037555, 1968.856865499]
