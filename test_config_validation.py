@@ -186,8 +186,13 @@ def test_pointer_missing_file_key_fails() -> None:
 
 @pytest.mark.parametrize(
     "bad_path",
-    ["/abs/artifact.yaml", "../outside/artifact.yaml", "a/../../b.yaml"],
-    ids=["absolute", "parent", "embedded-parent"],
+    [
+        "/abs/artifact.yaml",
+        r"C:\abs\artifact.yaml",
+        "../outside/artifact.yaml",
+        "a/../../b.yaml",
+    ],
+    ids=["absolute", "absolute-windows", "parent", "embedded-parent"],
 )
 def test_pointer_path_outside_decisions_directory_rejected(bad_path: str) -> None:
     # The pointer path is recorded verbatim in shipped config metadata;

@@ -8,6 +8,7 @@ parse printed text is a script wearing a library's name.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -82,3 +83,30 @@ def test_generate_does_not_depend_on_the_working_directory(
     monkeypatch.chdir(tmp_path)
     result = generate(REPO / "show_manifest.yaml", output_dir=tmp_path / "out")
     assert result.config_path.is_file()
+
+
+def test_the_cli_reports_through_a_pipe_on_any_code_page(tmp_path: Path) -> None:
+    """Piped output on Windows uses the ANSI code page, which cannot encode
+    the report's symbols; the CLI crashed mid-report rather than printing."""
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("PYTHONIOENCODING", "PYTHONUTF8")
+    }
+    env["PYTHONIOENCODING"] = "cp1252"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ocio_display_gen.cli",
+            "--check-predictions",
+            str(tmp_path / "missing.predictions.yaml"),
+        ],
+        capture_output=True,
+        cwd=REPO,
+        env=env,
+        check=False,
+    )
+    assert proc.returncode == 1
+    assert b"UnicodeEncodeError" not in proc.stderr
+    assert "Error" in proc.stdout.decode("utf-8")
